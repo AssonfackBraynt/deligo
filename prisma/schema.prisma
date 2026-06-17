@@ -1,0 +1,973 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  pending
+  active
+  suspended
+  rejected
+  deactivated
+}
+
+enum VerificationStatus {
+  unverified
+  pending
+  verified
+  rejected
+  suspended
+}
+
+enum DeliveryRequestStatus {
+  draft
+  payment_initiated
+  payment_confirmed
+  created
+  marketplace_open
+  offers_received
+  provider_assigned
+  pickup_verified
+  in_transit
+  delivered
+  completed
+  cancelled
+  disputed
+  expired
+}
+
+enum PaymentStatus {
+  unpaid
+  initiated
+  pending
+  confirmed
+  failed
+  cancelled
+  refunded
+}
+
+enum FulfillmentMode {
+  open_marketplace
+  recommended_provider
+  search_provider
+  agency_dispatch
+}
+
+enum OfferStatus {
+  submitted
+  accepted
+  rejected
+  expired
+  withdrawn
+}
+
+enum AvailabilityStatus {
+  available
+  unavailable
+  busy
+  offline
+}
+
+enum ProviderType {
+  independent_rider
+  courier_company
+  logistics_company
+}
+
+enum VerificationCodeType {
+  pickup
+  delivery
+  phone_verification
+  payment_confirmation
+}
+
+enum PaymentProviderStatus {
+  initiated
+  pending
+  confirmed
+  failed
+  cancelled
+  refunded
+}
+
+enum EscrowStatus {
+  held
+  released
+  refunded
+  disputed
+  partially_released
+}
+
+enum WalletStatus {
+  active
+  frozen
+  closed
+}
+
+enum WalletTransactionType {
+  credit
+  debit
+  payout
+  refund
+  commission
+  adjustment
+}
+
+enum DispatchAssignmentStatus {
+  suggested
+  assigned
+  accepted
+  rejected
+  in_progress
+  completed
+  cancelled
+}
+
+enum IdentityVerificationType {
+  phone
+  national_id
+  profile
+  business_registration
+  agency_document
+  rider_identity
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum NotificationChannel {
+  dashboard
+  whatsapp
+  email
+  sms
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  delivered
+  failed
+  cancelled
+}
+
+enum ProofType {
+  pickup_photo
+  package_photo
+  delivery_photo
+  delivery_confirmation
+  signature
+  other
+}
+
+enum CommissionType {
+  percentage
+  fixed
+}
+
+model User {
+  id                    String           @id @default(uuid()) @db.Uuid
+  fullName              String           @map("full_name") @db.VarChar(160)
+  phone                 String           @unique @db.VarChar(32)
+  email                 String?          @unique @db.VarChar(255)
+  passwordHash          String?          @map("password_hash")
+  avatarFileId          String?          @map("avatar_file_id") @db.Uuid
+  accountStatus         AccountStatus    @default(pending) @map("account_status")
+  phoneVerifiedAt       DateTime?        @map("phone_verified_at") @db.Timestamptz
+  emailVerifiedAt       DateTime?        @map("email_verified_at") @db.Timestamptz
+  lastLoginAt           DateTime?        @map("last_login_at") @db.Timestamptz
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt             DateTime?        @map("deleted_at") @db.Timestamptz
+  createdBy             String?          @map("created_by") @db.Uuid
+  updatedBy             String?          @map("updated_by") @db.Uuid
+  roles                 UserRole[]
+  providerProfile       ProviderProfile?
+  agencyMembers         AgencyMember[]
+  createdAgencies       Agency[]         @relation("AgencyCreatedBy")
+  updatedAgencies       Agency[]         @relation("AgencyUpdatedBy")
+  trackingEvents        TrackingEvent[]  @relation("TrackingResponsibleUser")
+  receivedNotifications Notification[]   @relation("NotificationRecipientUser")
+  auditLogs             AuditLog[]
+
+  @@index([accountStatus], map: "idx_users_account_status")
+  @@index([deletedAt], map: "idx_users_deleted_at")
+  @@map("users")
+}
+
+model Role {
+  id          String     @id @default(uuid()) @db.Uuid
+  code        String     @unique @db.VarChar(64)
+  name        String     @db.VarChar(120)
+  description String?
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  roleId    String    @map("role_id") @db.Uuid
+  agencyId  String?   @map("agency_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  user      User      @relation(fields: [userId], references: [id])
+  role      Role      @relation(fields: [roleId], references: [id])
+  agency    Agency?   @relation(fields: [agencyId], references: [id])
+
+  @@unique([userId, roleId, agencyId])
+  @@index([userId], map: "idx_user_roles_user_id")
+  @@index([roleId], map: "idx_user_roles_role_id")
+  @@index([agencyId], map: "idx_user_roles_agency_id")
+  @@map("user_roles")
+}
+
+model CustomerContact {
+  id                String            @id @default(uuid()) @db.Uuid
+  fullName          String            @map("full_name") @db.VarChar(160)
+  whatsappNumber    String            @map("whatsapp_number") @db.VarChar(32)
+  paymentNumber     String?           @map("payment_number") @db.VarChar(32)
+  email             String?           @db.VarChar(255)
+  preferredLanguage String?           @default("en") @map("preferred_language") @db.VarChar(16)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz
+  requests          DeliveryRequest[]
+  payments          Payment[]
+  notifications     Notification[]
+  reviews           ReviewRating[]
+  auditLogs         AuditLog[]
+
+  @@index([whatsappNumber], map: "idx_customer_contacts_whatsapp")
+  @@index([email], map: "idx_customer_contacts_email")
+  @@map("customer_contacts")
+}
+
+model Agency {
+  id                 String               @id @default(uuid()) @db.Uuid
+  name               String               @db.VarChar(180)
+  legalName          String?              @map("legal_name") @db.VarChar(220)
+  slug               String?              @unique @db.VarChar(120)
+  description        String?
+  phone              String?              @db.VarChar(32)
+  email              String?              @db.VarChar(255)
+  logoFileId         String?              @map("logo_file_id") @db.Uuid
+  address            String?
+  city               String?              @db.VarChar(120)
+  country            String?              @default("Cameroon") @db.VarChar(120)
+  verificationStatus VerificationStatus   @default(unverified) @map("verification_status")
+  subscriptionStatus String               @default("inactive") @map("subscription_status") @db.VarChar(32)
+  isFeatured         Boolean              @default(false) @map("is_featured")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime?            @map("deleted_at") @db.Timestamptz
+  createdBy          String?              @map("created_by") @db.Uuid
+  updatedBy          String?              @map("updated_by") @db.Uuid
+  creator            User?                @relation("AgencyCreatedBy", fields: [createdBy], references: [id])
+  updater            User?                @relation("AgencyUpdatedBy", fields: [updatedBy], references: [id])
+  members            AgencyMember[]
+  userRoles          UserRole[]
+  providerProfiles   ProviderProfile[]
+  pricingRules       PricingRule[]
+  riders             Rider[]
+  dispatches         DispatchAssignment[]
+  subscriptions      AgencySubscription[]
+  notifications      Notification[]
+
+  @@index([city], map: "idx_agencies_city")
+  @@index([verificationStatus], map: "idx_agencies_verification_status")
+  @@index([isFeatured], map: "idx_agencies_featured")
+  @@map("agencies")
+}
+
+model AgencyMember {
+  id         String    @id @default(uuid()) @db.Uuid
+  agencyId   String    @map("agency_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  memberRole String    @map("member_role") @db.VarChar(64)
+  status     String    @default("active") @db.VarChar(32)
+  joinedAt   DateTime  @default(now()) @map("joined_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+  agency     Agency    @relation(fields: [agencyId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@unique([agencyId, userId])
+  @@index([agencyId], map: "idx_agency_members_agency_id")
+  @@index([userId], map: "idx_agency_members_user_id")
+  @@map("agency_members")
+}
+
+model ProviderProfile {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String?            @unique @map("user_id") @db.Uuid
+  agencyId           String?            @map("agency_id") @db.Uuid
+  providerType       ProviderType       @map("provider_type")
+  displayName        String             @map("display_name") @db.VarChar(180)
+  description        String?
+  serviceCoverage    String?            @map("service_coverage")
+  baseCity           String?            @map("base_city") @db.VarChar(120)
+  baseCountry        String?            @default("Cameroon") @map("base_country") @db.VarChar(120)
+  phoneNumber        String?            @map("phone_number") @db.VarChar(32)
+  businessAddress    String?            @map("business_address")
+  businessLat        Decimal?           @map("business_lat") @db.Decimal(10, 7)
+  businessLng        Decimal?           @map("business_lng") @db.Decimal(10, 7)
+  ratingAverage      Decimal            @default(0) @map("rating_average") @db.Decimal(3, 2)
+  ratingCount        Int                @default(0) @map("rating_count")
+  verificationStatus VerificationStatus @default(unverified) @map("verification_status")
+  availabilityStatus AvailabilityStatus @default(available) @map("availability_status")
+  isFeatured         Boolean            @default(false) @map("is_featured")
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime?          @map("deleted_at") @db.Timestamptz
+  createdBy          String?            @map("created_by") @db.Uuid
+  updatedBy          String?            @map("updated_by") @db.Uuid
+  user               User?              @relation(fields: [userId], references: [id])
+  agency             Agency?            @relation(fields: [agencyId], references: [id])
+  pricingRules       PricingRule[]
+  selectedRequests   DeliveryRequest[]  @relation("SelectedProvider")
+  offers             MarketplaceOffer[]
+  reviews            ReviewRating[]
+  milestoneEvents    TrackingEvent[]    @relation("TrackingResponsibleProvider")
+
+  @@index([providerType], map: "idx_provider_profiles_type")
+  @@index([baseCity], map: "idx_provider_profiles_city")
+  @@index([ratingAverage], map: "idx_provider_profiles_rating")
+  @@index([verificationStatus], map: "idx_provider_profiles_verification")
+  @@index([isFeatured], map: "idx_provider_profiles_featured")
+  @@map("provider_profiles")
+}
+
+model PricingRule {
+  id                String           @id @default(uuid()) @db.Uuid
+  providerProfileId String?          @map("provider_profile_id") @db.Uuid
+  agencyId          String?          @map("agency_id") @db.Uuid
+  deliveryType      String?          @map("delivery_type") @db.VarChar(64)
+  baseFee           Decimal          @default(0) @map("base_fee") @db.Decimal(12, 2)
+  pricePerKm        Decimal          @default(0) @map("price_per_km") @db.Decimal(12, 2)
+  pricePerKg        Decimal          @default(0) @map("price_per_kg") @db.Decimal(12, 2)
+  fragileItemFee    Decimal          @default(0) @map("fragile_item_fee") @db.Decimal(12, 2)
+  minPrice          Decimal?         @map("min_price") @db.Decimal(12, 2)
+  maxPrice          Decimal?         @map("max_price") @db.Decimal(12, 2)
+  currency          String           @default("XAF") @db.VarChar(8)
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz
+  providerProfile   ProviderProfile? @relation(fields: [providerProfileId], references: [id])
+  agency            Agency?          @relation(fields: [agencyId], references: [id])
+
+  @@index([providerProfileId], map: "idx_pricing_rules_provider")
+  @@index([agencyId], map: "idx_pricing_rules_agency")
+  @@index([deliveryType], map: "idx_pricing_rules_delivery_type")
+  @@index([isActive], map: "idx_pricing_rules_active")
+  @@map("pricing_rules")
+}
+
+model DeliveryRequest {
+  id                        String                @id @default(uuid()) @db.Uuid
+  publicTrackingCode        String                @unique @map("public_tracking_code") @db.VarChar(40)
+  customerContactId         String                @map("customer_contact_id") @db.Uuid
+  requestStatus             DeliveryRequestStatus @default(draft) @map("request_status")
+  paymentStatus             PaymentStatus         @default(unpaid) @map("payment_status")
+  fulfillmentMode           FulfillmentMode?      @map("fulfillment_mode")
+  deliveryType              String                @map("delivery_type") @db.VarChar(64)
+  expectedDeliveryDate      DateTime?             @map("expected_delivery_date") @db.Date
+  expectedDeliveryTime      DateTime?             @map("expected_delivery_time") @db.Time
+  selectedProviderProfileId String?               @map("selected_provider_profile_id") @db.Uuid
+  selectedAgencyId          String?               @map("selected_agency_id") @db.Uuid
+  acceptedOfferId           String?               @unique @map("accepted_offer_id") @db.Uuid
+  desiredRewardAmount       Decimal?              @map("desired_reward_amount") @db.Decimal(12, 2)
+  deliveryCost              Decimal?              @map("delivery_cost") @db.Decimal(12, 2)
+  platformFee               Decimal               @default(0) @map("platform_fee") @db.Decimal(12, 2)
+  totalAmount               Decimal?              @map("total_amount") @db.Decimal(12, 2)
+  currency                  String                @default("XAF") @db.VarChar(8)
+  paymentConfirmedAt        DateTime?             @map("payment_confirmed_at") @db.Timestamptz
+  providerAssignedAt        DateTime?             @map("provider_assigned_at") @db.Timestamptz
+  completedAt               DateTime?             @map("completed_at") @db.Timestamptz
+  cancelledAt               DateTime?             @map("cancelled_at") @db.Timestamptz
+  createdAt                 DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                 DateTime?             @map("deleted_at") @db.Timestamptz
+  createdBy                 String?               @map("created_by") @db.Uuid
+  updatedBy                 String?               @map("updated_by") @db.Uuid
+  customerContact           CustomerContact       @relation(fields: [customerContactId], references: [id])
+  selectedProvider          ProviderProfile?      @relation("SelectedProvider", fields: [selectedProviderProfileId], references: [id])
+  route                     RequestRoute?
+  items                     RequestItem[]
+  providerSelection         ProviderSelection?
+  offers                    MarketplaceOffer[]    @relation("RequestOffers")
+  acceptedOffer             MarketplaceOffer?     @relation("AcceptedOffer", fields: [acceptedOfferId], references: [id])
+  trackingEvents            TrackingEvent[]
+  verificationCodes         VerificationCode[]
+  proofRecords              ProofRecord[]
+  payments                  Payment[]
+  dispatchAssignments       DispatchAssignment[]
+  escrowTransactions        EscrowTransaction[]
+  reviews                   ReviewRating[]
+
+  @@index([customerContactId], map: "idx_delivery_requests_customer")
+  @@index([requestStatus], map: "idx_delivery_requests_status")
+  @@index([paymentStatus], map: "idx_delivery_requests_payment_status")
+  @@index([fulfillmentMode], map: "idx_delivery_requests_fulfillment_mode")
+  @@index([deliveryType], map: "idx_delivery_requests_delivery_type")
+  @@index([expectedDeliveryDate], map: "idx_delivery_requests_expected_date")
+  @@index([selectedProviderProfileId], map: "idx_delivery_requests_selected_provider")
+  @@index([selectedAgencyId], map: "idx_delivery_requests_selected_agency")
+  @@index([createdAt], map: "idx_delivery_requests_created_at")
+  @@map("delivery_requests")
+}
+
+model RequestRoute {
+  id                       String          @id @default(uuid()) @db.Uuid
+  deliveryRequestId        String          @unique @map("delivery_request_id") @db.Uuid
+  pickupAddress            String          @map("pickup_address")
+  pickupLandmark           String?         @map("pickup_landmark")
+  pickupCity               String?         @map("pickup_city") @db.VarChar(120)
+  pickupCountry            String?         @default("Cameroon") @map("pickup_country") @db.VarChar(120)
+  pickupLat                Decimal?        @map("pickup_lat") @db.Decimal(10, 7)
+  pickupLng                Decimal?        @map("pickup_lng") @db.Decimal(10, 7)
+  destinationAddress       String          @map("destination_address")
+  destinationLandmark      String?         @map("destination_landmark")
+  destinationCity          String?         @map("destination_city") @db.VarChar(120)
+  destinationCountry       String?         @default("Cameroon") @map("destination_country") @db.VarChar(120)
+  destinationLat           Decimal?        @map("destination_lat") @db.Decimal(10, 7)
+  destinationLng           Decimal?        @map("destination_lng") @db.Decimal(10, 7)
+  estimatedDistanceKm      Decimal?        @map("estimated_distance_km") @db.Decimal(10, 2)
+  estimatedDurationMinutes Int?            @map("estimated_duration_minutes")
+  suggestedRouteSummary    String?         @map("suggested_route_summary")
+  mapProvider              String?         @map("map_provider") @db.VarChar(64)
+  createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                DateTime?       @map("deleted_at") @db.Timestamptz
+  deliveryRequest          DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+
+  @@index([pickupCity], map: "idx_request_routes_pickup_city")
+  @@index([destinationCity], map: "idx_request_routes_destination_city")
+  @@map("request_routes")
+}
+
+model RequestItem {
+  id                  String          @id @default(uuid()) @db.Uuid
+  deliveryRequestId   String          @map("delivery_request_id") @db.Uuid
+  itemName            String          @map("item_name") @db.VarChar(180)
+  itemDescription     String?         @map("item_description")
+  category            String?         @db.VarChar(100)
+  weightKg            Decimal?        @map("weight_kg") @db.Decimal(10, 2)
+  sizeLabel           String?         @map("size_label") @db.VarChar(64)
+  quantity            Int             @default(1)
+  photoFileId         String?         @map("photo_file_id") @db.Uuid
+  isFragile           Boolean         @default(false) @map("is_fragile")
+  specialInstructions String?         @map("special_instructions")
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime?       @map("deleted_at") @db.Timestamptz
+  deliveryRequest     DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_request_items_request")
+  @@index([category], map: "idx_request_items_category")
+  @@index([isFragile], map: "idx_request_items_fragile")
+  @@map("request_items")
+}
+
+model ProviderSelection {
+  id                        String          @id @default(uuid()) @db.Uuid
+  deliveryRequestId         String          @unique @map("delivery_request_id") @db.Uuid
+  selectionMode             FulfillmentMode @map("selection_mode")
+  selectedProviderProfileId String?         @map("selected_provider_profile_id") @db.Uuid
+  selectedAgencyId          String?         @map("selected_agency_id") @db.Uuid
+  estimatedMinPrice         Decimal?        @map("estimated_min_price") @db.Decimal(12, 2)
+  estimatedMaxPrice         Decimal?        @map("estimated_max_price") @db.Decimal(12, 2)
+  finalPrice                Decimal?        @map("final_price") @db.Decimal(12, 2)
+  recommendationScore       Decimal?        @map("recommendation_score") @db.Decimal(8, 4)
+  selectionMetadata         Json?           @map("selection_metadata")
+  createdAt                 DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                 DateTime?       @map("deleted_at") @db.Timestamptz
+  deliveryRequest           DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+
+  @@index([selectionMode], map: "idx_provider_selections_mode")
+  @@index([selectedProviderProfileId], map: "idx_provider_selections_provider")
+  @@index([selectedAgencyId], map: "idx_provider_selections_agency")
+  @@map("provider_selections")
+}
+
+model MarketplaceOffer {
+  id                    String           @id @default(uuid()) @db.Uuid
+  deliveryRequestId     String           @map("delivery_request_id") @db.Uuid
+  providerProfileId     String?          @map("provider_profile_id") @db.Uuid
+  agencyId              String?          @map("agency_id") @db.Uuid
+  offerAmount           Decimal          @map("offer_amount") @db.Decimal(12, 2)
+  currency              String           @default("XAF") @db.VarChar(8)
+  estimatedPickupTime   DateTime?        @map("estimated_pickup_time") @db.Timestamptz
+  estimatedDeliveryTime DateTime?        @map("estimated_delivery_time") @db.Timestamptz
+  message               String?
+  offerStatus           OfferStatus      @default(submitted) @map("offer_status")
+  submittedAt           DateTime         @default(now()) @map("submitted_at") @db.Timestamptz
+  acceptedAt            DateTime?        @map("accepted_at") @db.Timestamptz
+  rejectedAt            DateTime?        @map("rejected_at") @db.Timestamptz
+  expiredAt             DateTime?        @map("expired_at") @db.Timestamptz
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt             DateTime?        @map("deleted_at") @db.Timestamptz
+  request               DeliveryRequest  @relation("RequestOffers", fields: [deliveryRequestId], references: [id])
+  acceptedByRequest     DeliveryRequest? @relation("AcceptedOffer")
+  providerProfile       ProviderProfile? @relation(fields: [providerProfileId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_marketplace_offers_request")
+  @@index([offerStatus], map: "idx_marketplace_offers_status")
+  @@index([offerAmount], map: "idx_marketplace_offers_amount")
+  @@index([providerProfileId], map: "idx_marketplace_offers_provider")
+  @@index([agencyId], map: "idx_marketplace_offers_agency")
+  @@index([submittedAt], map: "idx_marketplace_offers_submitted_at")
+  @@map("marketplace_offers")
+}
+
+model TrackingEvent {
+  id                           String           @id @default(uuid()) @db.Uuid
+  deliveryRequestId            String           @map("delivery_request_id") @db.Uuid
+  eventType                    String           @map("event_type") @db.VarChar(64)
+  statusAfterEvent             String?          @map("status_after_event") @db.VarChar(64)
+  responsibleUserId            String?          @map("responsible_user_id") @db.Uuid
+  responsibleAgencyId          String?          @map("responsible_agency_id") @db.Uuid
+  responsibleProviderProfileId String?          @map("responsible_provider_profile_id") @db.Uuid
+  notes                        String?
+  locationText                 String?          @map("location_text")
+  latitude                     Decimal?         @db.Decimal(10, 7)
+  longitude                    Decimal?         @db.Decimal(10, 7)
+  eventMetadata                Json?            @map("event_metadata")
+  occurredAt                   DateTime         @default(now()) @map("occurred_at") @db.Timestamptz
+  createdAt                    DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  createdBy                    String?          @map("created_by") @db.Uuid
+  deliveryRequest              DeliveryRequest  @relation(fields: [deliveryRequestId], references: [id])
+  responsibleUser              User?            @relation("TrackingResponsibleUser", fields: [responsibleUserId], references: [id])
+  responsibleProviderProfile   ProviderProfile? @relation("TrackingResponsibleProvider", fields: [responsibleProviderProfileId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_tracking_events_request")
+  @@index([eventType], map: "idx_tracking_events_type")
+  @@index([occurredAt], map: "idx_tracking_events_occurred_at")
+  @@map("tracking_events")
+}
+
+model VerificationCode {
+  id                String               @id @default(uuid()) @db.Uuid
+  deliveryRequestId String               @map("delivery_request_id") @db.Uuid
+  codeType          VerificationCodeType @map("code_type")
+  codeHash          String               @map("code_hash")
+  deliveryChannel   String?              @map("delivery_channel") @db.VarChar(32)
+  recipientPhone    String?              @map("recipient_phone") @db.VarChar(32)
+  expiresAt         DateTime             @map("expires_at") @db.Timestamptz
+  verifiedAt        DateTime?            @map("verified_at") @db.Timestamptz
+  verifiedByUserId  String?              @map("verified_by_user_id") @db.Uuid
+  attemptCount      Int                  @default(0) @map("attempt_count")
+  maxAttempts       Int                  @default(5) @map("max_attempts")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  deliveryRequest   DeliveryRequest      @relation(fields: [deliveryRequestId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_verification_codes_request")
+  @@index([codeType], map: "idx_verification_codes_type")
+  @@index([expiresAt], map: "idx_verification_codes_expires_at")
+  @@index([verifiedAt], map: "idx_verification_codes_verified_at")
+  @@map("verification_codes")
+}
+
+model ProofRecord {
+  id                String          @id @default(uuid()) @db.Uuid
+  deliveryRequestId String          @map("delivery_request_id") @db.Uuid
+  proofType         ProofType       @map("proof_type")
+  uploadedByUserId  String?         @map("uploaded_by_user_id") @db.Uuid
+  fileId            String?         @map("file_id") @db.Uuid
+  notes             String?
+  signatureText     String?         @map("signature_text")
+  latitude          Decimal?        @db.Decimal(10, 7)
+  longitude         Decimal?        @db.Decimal(10, 7)
+  capturedAt        DateTime        @default(now()) @map("captured_at") @db.Timestamptz
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt         DateTime?       @map("deleted_at") @db.Timestamptz
+  deliveryRequest   DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_proof_records_request")
+  @@index([proofType], map: "idx_proof_records_type")
+  @@map("proof_records")
+}
+
+model Payment {
+  id                  String                @id @default(uuid()) @db.Uuid
+  deliveryRequestId   String                @map("delivery_request_id") @db.Uuid
+  customerContactId   String                @map("customer_contact_id") @db.Uuid
+  paymentProvider     String                @map("payment_provider") @db.VarChar(64)
+  paymentMethod       String                @map("payment_method") @db.VarChar(64)
+  providerReference   String?               @map("provider_reference") @db.VarChar(160)
+  internalReference   String                @unique @map("internal_reference") @db.VarChar(160)
+  amount              Decimal               @db.Decimal(12, 2)
+  currency            String                @default("XAF") @db.VarChar(8)
+  paymentStatus       PaymentProviderStatus @default(initiated) @map("payment_status")
+  payerPhone          String                @map("payer_phone") @db.VarChar(32)
+  initiatedAt         DateTime              @default(now()) @map("initiated_at") @db.Timestamptz
+  confirmedAt         DateTime?             @map("confirmed_at") @db.Timestamptz
+  failedAt            DateTime?             @map("failed_at") @db.Timestamptz
+  cancelledAt         DateTime?             @map("cancelled_at") @db.Timestamptz
+  rawProviderResponse Json?                 @map("raw_provider_response")
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime?             @map("deleted_at") @db.Timestamptz
+  deliveryRequest     DeliveryRequest       @relation(fields: [deliveryRequestId], references: [id])
+  customerContact     CustomerContact       @relation(fields: [customerContactId], references: [id])
+  escrowTransactions  EscrowTransaction[]
+
+  @@index([deliveryRequestId], map: "idx_payments_request")
+  @@index([customerContactId], map: "idx_payments_customer")
+  @@index([paymentStatus], map: "idx_payments_status")
+  @@index([providerReference], map: "idx_payments_provider_reference")
+  @@index([createdAt], map: "idx_payments_created_at")
+  @@map("payments")
+}
+
+model EscrowTransaction {
+  id                String          @id @default(uuid()) @db.Uuid
+  deliveryRequestId String          @map("delivery_request_id") @db.Uuid
+  paymentId         String          @map("payment_id") @db.Uuid
+  escrowStatus      EscrowStatus    @default(held) @map("escrow_status")
+  grossAmount       Decimal         @map("gross_amount") @db.Decimal(12, 2)
+  platformFee       Decimal         @default(0) @map("platform_fee") @db.Decimal(12, 2)
+  providerAmount    Decimal         @map("provider_amount") @db.Decimal(12, 2)
+  currency          String          @default("XAF") @db.VarChar(8)
+  heldAt            DateTime?       @map("held_at") @db.Timestamptz
+  releasedAt        DateTime?       @map("released_at") @db.Timestamptz
+  refundedAt        DateTime?       @map("refunded_at") @db.Timestamptz
+  recipientUserId   String?         @map("recipient_user_id") @db.Uuid
+  recipientAgencyId String?         @map("recipient_agency_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?       @map("deleted_at") @db.Timestamptz
+  deliveryRequest   DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+  payment           Payment         @relation(fields: [paymentId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_escrow_request")
+  @@index([paymentId], map: "idx_escrow_payment")
+  @@index([escrowStatus], map: "idx_escrow_status")
+  @@index([recipientUserId], map: "idx_escrow_recipient_user")
+  @@index([recipientAgencyId], map: "idx_escrow_recipient_agency")
+  @@map("escrow_transactions")
+}
+
+model Wallet {
+  id               String              @id @default(uuid()) @db.Uuid
+  userId           String?             @map("user_id") @db.Uuid
+  agencyId         String?             @map("agency_id") @db.Uuid
+  currency         String              @default("XAF") @db.VarChar(8)
+  availableBalance Decimal             @default(0) @map("available_balance") @db.Decimal(12, 2)
+  pendingBalance   Decimal             @default(0) @map("pending_balance") @db.Decimal(12, 2)
+  walletStatus     WalletStatus        @default(active) @map("wallet_status")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?           @map("deleted_at") @db.Timestamptz
+  transactions     WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id                  String                @id @default(uuid()) @db.Uuid
+  walletId            String                @map("wallet_id") @db.Uuid
+  deliveryRequestId   String?               @map("delivery_request_id") @db.Uuid
+  escrowTransactionId String?               @map("escrow_transaction_id") @db.Uuid
+  transactionType     WalletTransactionType @map("transaction_type")
+  amount              Decimal               @db.Decimal(12, 2)
+  currency            String                @default("XAF") @db.VarChar(8)
+  balanceAfter        Decimal?              @map("balance_after") @db.Decimal(12, 2)
+  reference           String?               @unique @db.VarChar(160)
+  notes               String?
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  createdBy           String?               @map("created_by") @db.Uuid
+  wallet              Wallet                @relation(fields: [walletId], references: [id])
+
+  @@index([walletId], map: "idx_wallet_transactions_wallet")
+  @@index([deliveryRequestId], map: "idx_wallet_transactions_request")
+  @@index([transactionType], map: "idx_wallet_transactions_type")
+  @@index([createdAt], map: "idx_wallet_transactions_created_at")
+  @@map("wallet_transactions")
+}
+
+model Rider {
+  id                 String               @id @default(uuid()) @db.Uuid
+  agencyId           String               @map("agency_id") @db.Uuid
+  userId             String?              @map("user_id") @db.Uuid
+  fullName           String               @map("full_name") @db.VarChar(160)
+  phone              String               @db.VarChar(32)
+  vehicleType        String?              @map("vehicle_type") @db.VarChar(64)
+  availabilityStatus AvailabilityStatus   @default(available) @map("availability_status")
+  currentWorkload    Int                  @default(0) @map("current_workload")
+  verificationStatus VerificationStatus   @default(unverified) @map("verification_status")
+  lastKnownLat       Decimal?             @map("last_known_lat") @db.Decimal(10, 7)
+  lastKnownLng       Decimal?             @map("last_known_lng") @db.Decimal(10, 7)
+  lastSeenAt         DateTime?            @map("last_seen_at") @db.Timestamptz
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime?            @map("deleted_at") @db.Timestamptz
+  agency             Agency               @relation(fields: [agencyId], references: [id])
+  dispatches         DispatchAssignment[]
+
+  @@unique([agencyId, phone])
+  @@index([agencyId], map: "idx_riders_agency")
+  @@index([availabilityStatus], map: "idx_riders_availability")
+  @@index([vehicleType], map: "idx_riders_vehicle_type")
+  @@index([verificationStatus], map: "idx_riders_verification")
+  @@map("riders")
+}
+
+model DispatchAssignment {
+  id                String                   @id @default(uuid()) @db.Uuid
+  deliveryRequestId String                   @map("delivery_request_id") @db.Uuid
+  agencyId          String                   @map("agency_id") @db.Uuid
+  riderId           String?                  @map("rider_id") @db.Uuid
+  assignmentStatus  DispatchAssignmentStatus @default(suggested) @map("assignment_status")
+  assignmentScore   Decimal?                 @map("assignment_score") @db.Decimal(8, 4)
+  assignedByUserId  String?                  @map("assigned_by_user_id") @db.Uuid
+  assignedAt        DateTime?                @map("assigned_at") @db.Timestamptz
+  acceptedAt        DateTime?                @map("accepted_at") @db.Timestamptz
+  rejectedAt        DateTime?                @map("rejected_at") @db.Timestamptz
+  completedAt       DateTime?                @map("completed_at") @db.Timestamptz
+  notes             String?
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?                @map("deleted_at") @db.Timestamptz
+  deliveryRequest   DeliveryRequest          @relation(fields: [deliveryRequestId], references: [id])
+  agency            Agency                   @relation(fields: [agencyId], references: [id])
+  rider             Rider?                   @relation(fields: [riderId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_dispatch_request")
+  @@index([agencyId], map: "idx_dispatch_agency")
+  @@index([riderId], map: "idx_dispatch_rider")
+  @@index([assignmentStatus], map: "idx_dispatch_status")
+  @@map("dispatch_assignments")
+}
+
+model VerificationRecord {
+  id                String                   @id @default(uuid()) @db.Uuid
+  userId            String?                  @map("user_id") @db.Uuid
+  agencyId          String?                  @map("agency_id") @db.Uuid
+  providerProfileId String?                  @map("provider_profile_id") @db.Uuid
+  riderId           String?                  @map("rider_id") @db.Uuid
+  verificationType  IdentityVerificationType @map("verification_type")
+  status            ReviewStatus             @default(pending)
+  documentFileId    String?                  @map("document_file_id") @db.Uuid
+  submittedValue    String?                  @map("submitted_value")
+  reviewerUserId    String?                  @map("reviewer_user_id") @db.Uuid
+  reviewedAt        DateTime?                @map("reviewed_at") @db.Timestamptz
+  rejectionReason   String?                  @map("rejection_reason")
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?                @map("deleted_at") @db.Timestamptz
+
+  @@index([userId], map: "idx_verification_user")
+  @@index([agencyId], map: "idx_verification_agency")
+  @@index([providerProfileId], map: "idx_verification_provider")
+  @@index([status], map: "idx_verification_status")
+  @@index([verificationType], map: "idx_verification_type")
+  @@map("verification_records")
+}
+
+model Notification {
+  id                         String              @id @default(uuid()) @db.Uuid
+  recipientUserId            String?             @map("recipient_user_id") @db.Uuid
+  recipientCustomerContactId String?             @map("recipient_customer_contact_id") @db.Uuid
+  recipientAgencyId          String?             @map("recipient_agency_id") @db.Uuid
+  deliveryRequestId          String?             @map("delivery_request_id") @db.Uuid
+  channel                    NotificationChannel
+  notificationType           String              @map("notification_type") @db.VarChar(64)
+  title                      String?             @db.VarChar(180)
+  message                    String
+  destination                String?             @db.VarChar(180)
+  status                     NotificationStatus  @default(pending)
+  providerReference          String?             @map("provider_reference") @db.VarChar(160)
+  sentAt                     DateTime?           @map("sent_at") @db.Timestamptz
+  deliveredAt                DateTime?           @map("delivered_at") @db.Timestamptz
+  failedAt                   DateTime?           @map("failed_at") @db.Timestamptz
+  failureReason              String?             @map("failure_reason")
+  retryCount                 Int                 @default(0) @map("retry_count")
+  metadata                   Json?
+  createdAt                  DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                  DateTime?           @map("deleted_at") @db.Timestamptz
+  recipientUser              User?               @relation("NotificationRecipientUser", fields: [recipientUserId], references: [id])
+  recipientCustomerContact   CustomerContact?    @relation(fields: [recipientCustomerContactId], references: [id])
+  recipientAgency            Agency?             @relation(fields: [recipientAgencyId], references: [id])
+
+  @@index([recipientUserId], map: "idx_notifications_user")
+  @@index([recipientCustomerContactId], map: "idx_notifications_customer")
+  @@index([recipientAgencyId], map: "idx_notifications_agency")
+  @@index([deliveryRequestId], map: "idx_notifications_request")
+  @@index([channel], map: "idx_notifications_channel")
+  @@index([status], map: "idx_notifications_status")
+  @@index([createdAt], map: "idx_notifications_created_at")
+  @@map("notifications")
+}
+
+model ReviewRating {
+  id                String           @id @default(uuid()) @db.Uuid
+  deliveryRequestId String           @map("delivery_request_id") @db.Uuid
+  customerContactId String           @map("customer_contact_id") @db.Uuid
+  providerProfileId String?          @map("provider_profile_id") @db.Uuid
+  agencyId          String?          @map("agency_id") @db.Uuid
+  riderId           String?          @map("rider_id") @db.Uuid
+  rating            Int
+  comment           String?
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz
+  deliveryRequest   DeliveryRequest  @relation(fields: [deliveryRequestId], references: [id])
+  customerContact   CustomerContact  @relation(fields: [customerContactId], references: [id])
+  providerProfile   ProviderProfile? @relation(fields: [providerProfileId], references: [id])
+
+  @@index([deliveryRequestId], map: "idx_reviews_request")
+  @@index([providerProfileId], map: "idx_reviews_provider")
+  @@index([agencyId], map: "idx_reviews_agency")
+  @@index([rating], map: "idx_reviews_rating")
+  @@map("review_ratings")
+}
+
+model Dispute {
+  id                        String    @id @default(uuid()) @db.Uuid
+  deliveryRequestId         String    @map("delivery_request_id") @db.Uuid
+  openedByUserId            String?   @map("opened_by_user_id") @db.Uuid
+  openedByCustomerContactId String?   @map("opened_by_customer_contact_id") @db.Uuid
+  disputeType               String    @map("dispute_type") @db.VarChar(64)
+  status                    String    @default("open") @db.VarChar(32)
+  description               String
+  resolutionNotes           String?   @map("resolution_notes")
+  resolvedByUserId          String?   @map("resolved_by_user_id") @db.Uuid
+  resolvedAt                DateTime? @map("resolved_at") @db.Timestamptz
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                 DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([deliveryRequestId], map: "idx_disputes_request")
+  @@index([status], map: "idx_disputes_status")
+  @@index([disputeType], map: "idx_disputes_type")
+  @@map("disputes")
+}
+
+model UploadedFile {
+  id                String    @id @default(uuid()) @db.Uuid
+  uploadedByUserId  String?   @map("uploaded_by_user_id") @db.Uuid
+  customerContactId String?   @map("customer_contact_id") @db.Uuid
+  storageProvider   String    @map("storage_provider") @db.VarChar(64)
+  bucketName        String?   @map("bucket_name") @db.VarChar(160)
+  objectKey         String    @map("object_key")
+  originalFilename  String?   @map("original_filename") @db.VarChar(255)
+  mimeType          String?   @map("mime_type") @db.VarChar(120)
+  fileSizeBytes     BigInt?   @map("file_size_bytes")
+  visibility        String    @default("private") @db.VarChar(32)
+  checksum          String?
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([uploadedByUserId], map: "idx_uploaded_files_user")
+  @@index([customerContactId], map: "idx_uploaded_files_customer")
+  @@index([visibility], map: "idx_uploaded_files_visibility")
+  @@map("uploaded_files")
+}
+
+model CommissionRule {
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String         @db.VarChar(120)
+  deliveryType    String?        @map("delivery_type") @db.VarChar(64)
+  providerType    String?        @map("provider_type") @db.VarChar(64)
+  commissionType  CommissionType @map("commission_type")
+  commissionValue Decimal        @map("commission_value") @db.Decimal(12, 2)
+  minFee          Decimal?       @map("min_fee") @db.Decimal(12, 2)
+  maxFee          Decimal?       @map("max_fee") @db.Decimal(12, 2)
+  isActive        Boolean        @default(true) @map("is_active")
+  effectiveFrom   DateTime       @map("effective_from") @db.Timestamptz
+  effectiveTo     DateTime?      @map("effective_to") @db.Timestamptz
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
+
+  @@map("commission_rules")
+}
+
+model SubscriptionPlan {
+  id            String               @id @default(uuid()) @db.Uuid
+  name          String               @db.VarChar(120)
+  code          String               @unique @db.VarChar(64)
+  monthlyPrice  Decimal              @map("monthly_price") @db.Decimal(12, 2)
+  currency      String               @default("XAF") @db.VarChar(8)
+  maxRiders     Int?                 @map("max_riders")
+  features      Json?
+  isActive      Boolean              @default(true) @map("is_active")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime?            @map("deleted_at") @db.Timestamptz
+  subscriptions AgencySubscription[]
+
+  @@map("subscription_plans")
+}
+
+model AgencySubscription {
+  id                 String           @id @default(uuid()) @db.Uuid
+  agencyId           String           @map("agency_id") @db.Uuid
+  subscriptionPlanId String           @map("subscription_plan_id") @db.Uuid
+  status             String           @default("active") @db.VarChar(32)
+  startsAt           DateTime         @map("starts_at") @db.Timestamptz
+  endsAt             DateTime?        @map("ends_at") @db.Timestamptz
+  cancelledAt        DateTime?        @map("cancelled_at") @db.Timestamptz
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime?        @map("deleted_at") @db.Timestamptz
+  agency             Agency           @relation(fields: [agencyId], references: [id])
+  plan               SubscriptionPlan @relation(fields: [subscriptionPlanId], references: [id])
+
+  @@index([agencyId], map: "idx_agency_subscriptions_agency")
+  @@index([status], map: "idx_agency_subscriptions_status")
+  @@map("agency_subscriptions")
+}
+
+model AuditLog {
+  id                     String           @id @default(uuid()) @db.Uuid
+  actorUserId            String?          @map("actor_user_id") @db.Uuid
+  actorCustomerContactId String?          @map("actor_customer_contact_id") @db.Uuid
+  entityType             String           @map("entity_type") @db.VarChar(100)
+  entityId               String           @map("entity_id") @db.Uuid
+  action                 String           @db.VarChar(80)
+  oldValues              Json?            @map("old_values")
+  newValues              Json?            @map("new_values")
+  ipAddress              String?          @map("ip_address") @db.Inet
+  userAgent              String?          @map("user_agent")
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  actorUser              User?            @relation(fields: [actorUserId], references: [id])
+  actorCustomerContact   CustomerContact? @relation(fields: [actorCustomerContactId], references: [id])
+
+  @@index([actorUserId], map: "idx_audit_logs_actor_user")
+  @@index([entityType, entityId], map: "idx_audit_logs_entity")
+  @@index([action], map: "idx_audit_logs_action")
+  @@index([createdAt], map: "idx_audit_logs_created_at")
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id           String   @id @default(uuid()) @db.Uuid
+  settingKey   String   @unique @map("setting_key") @db.VarChar(120)
+  settingValue Json     @map("setting_value")
+  description  String?
+  isPublic     Boolean  @default(false) @map("is_public")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedBy    String?  @map("updated_by") @db.Uuid
+
+  @@map("system_settings")
+}

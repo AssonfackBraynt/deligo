@@ -1,0 +1,17 @@
+export enum ErrorCode {
+  ValidationError = 'VALIDATION_ERROR',
+  AuthenticationRequired = 'AUTHENTICATION_REQUIRED',
+  InvalidCredentials = 'INVALID_CREDENTIALS',
+  TokenExpired = 'TOKEN_EXPIRED',
+  Forbidden = 'FORBIDDEN',
+  ResourceNotFound = 'RESOURCE_NOT_FOUND',
+  Conflict = 'CONFLICT',
+  InvalidStatusTransition = 'INVALID_STATUS_TRANSITION',
+  PaymentFailed = 'PAYMENT_FAILED',
+  PaymentPending = 'PAYMENT_PENDING',
+  PaymentWebhookInvalid = 'PAYMENT_WEBHOOK_INVALID',
+  ProviderNotVerified = 'PROVIDER_NOT_VERIFIED',
+  OfferAlreadyAccepted = 'OFFER_ALREADY_ACCEPTED',
+  RateLimitExceeded = 'RATE_LIMIT_EXCEEDED',
+  InternalServerError = 'INTERNAL_SERVER_ERROR',
+}
