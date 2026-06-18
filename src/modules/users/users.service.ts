@@ -18,6 +18,35 @@ export type UserWithRoles = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findAuthUserByEmail(email: string): Promise<UserWithRoles | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        roles: {
+          where: { deletedAt: null },
+          include: { role: true },
+        },
+      },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      passwordHash: user.passwordHash,
+      accountStatus: user.accountStatus as AccountStatus,
+      roles: user.roles.map((userRole) => userRole.role.code as RoleCode),
+      agencyIds: user.roles
+        .map((userRole) => userRole.agencyId)
+        .filter((agencyId): agencyId is string => Boolean(agencyId)),
+    };
+  }
+
   async findAuthUserByPhone(phone: string): Promise<UserWithRoles | null> {
     const user = await this.prisma.user.findUnique({
       where: { phone },

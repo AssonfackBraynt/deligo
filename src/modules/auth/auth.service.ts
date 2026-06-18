@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
@@ -55,7 +55,14 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
-    const user = await this.usersService.findAuthUserByPhone(dto.phone);
+    if (!dto.email && !dto.phone) {
+      throw new BadRequestException('email or phone is required');
+    }
+
+    const user = dto.email
+      ? await this.usersService.findAuthUserByEmail(dto.email)
+      : await this.usersService.findAuthUserByPhone(dto.phone!);
+
     if (!user?.passwordHash) {
       throw this.invalidCredentials();
     }
