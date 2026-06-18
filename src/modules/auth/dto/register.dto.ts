@@ -22,7 +22,7 @@ export class RegisterDto {
   @MinLength(8)
   password: string;
 
-  @ApiProperty({ enum: [RoleCode.Carrier, RoleCode.ProviderAdmin, RoleCode.AgencyAdmin] })
-  @IsIn([RoleCode.Carrier, RoleCode.ProviderAdmin, RoleCode.AgencyAdmin])
-  role: RoleCode.Carrier | RoleCode.ProviderAdmin | RoleCode.AgencyAdmin;
+  @ApiProperty({ enum: [RoleCode.Provider] })
+  @IsIn([RoleCode.Provider])
+  role: RoleCode.Provider;
 }

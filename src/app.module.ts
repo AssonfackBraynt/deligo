@@ -12,6 +12,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { IntelligenceModule } from './modules/intelligence/intelligence.module';
+import { ProviderProfileModule } from './modules/provider-profile/provider-profile.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -25,6 +26,7 @@ import { UsersModule } from './modules/users/users.module';
     DatabaseModule,
     UsersModule,
     AuthModule,
+    ProviderProfileModule,
     IntelligenceModule,
   ],
   providers: [

@@ -93,7 +93,7 @@ export class UsersService {
         phone: input.phone,
         email: input.email,
         passwordHash: input.passwordHash,
-        accountStatus: AccountStatus.Pending,
+        accountStatus: AccountStatus.Active,
         roles: {
           create: {
             roleId: role.id,

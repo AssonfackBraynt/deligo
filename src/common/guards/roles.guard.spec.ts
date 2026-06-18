@@ -36,7 +36,7 @@ describe('RolesGuard', () => {
       switchToHttp: () => ({
         getRequest: () => ({
           user: {
-            roles: [RoleCode.Carrier],
+            roles: [RoleCode.Provider],
           },
         }),
       }),

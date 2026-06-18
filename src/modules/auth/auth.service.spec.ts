@@ -17,7 +17,7 @@ describe('AuthService', () => {
     email: 'john@example.com',
     passwordHash: 'hash',
     accountStatus: AccountStatus.Active,
-    roles: [RoleCode.Carrier],
+    roles: [RoleCode.Provider],
     agencyIds: [],
   };
 
@@ -29,7 +29,7 @@ describe('AuthService', () => {
     };
 
     service = new AuthService(
-      usersService as UsersService,
+      usersService as unknown as UsersService,
       {
         signAsync: jest.fn().mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token'),
         verifyAsync: jest.fn(),
