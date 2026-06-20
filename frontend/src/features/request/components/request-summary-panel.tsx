@@ -21,8 +21,8 @@ export function RequestSummaryPanel({ draftId }: { draftId: string }) {
           icon={<MapPin size={18} aria-hidden="true" />}
           label="Route"
           value={
-            draft?.pickupAddress && draft?.destinationAddress
-              ? `${draft.pickupAddress} to ${draft.destinationAddress}`
+            draft?.pickupQuarterName && draft?.destinationQuarterName
+              ? `${draft.pickupQuarterName} → ${draft.destinationQuarterName}`
               : 'Pickup and destination not set'
           }
         />

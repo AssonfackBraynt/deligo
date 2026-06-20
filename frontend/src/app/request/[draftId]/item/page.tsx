@@ -43,10 +43,14 @@ export default function ItemInformationPage() {
               onChange={(event) => updateDraft(draftId, { category: event.target.value })}
             >
               <option value="">Select</option>
-              <option value="documents">Documents</option>
-              <option value="parcel">Parcel</option>
-              <option value="food">Food</option>
+              <option value="document">Document</option>
               <option value="electronics">Electronics</option>
+              <option value="clothing">Clothing</option>
+              <option value="food">Food</option>
+              <option value="medical">Medical</option>
+              <option value="fragile">Fragile</option>
+              <option value="vehicle_parts">Vehicle Parts</option>
+              <option value="furniture">Furniture</option>
               <option value="other">Other</option>
             </Select>
           </Field>
@@ -75,10 +79,10 @@ export default function ItemInformationPage() {
             onChange={(event) => updateDraft(draftId, { sizeLabel: event.target.value })}
           >
             <option value="">Select size</option>
-            <option value="small">Small</option>
-            <option value="medium">Medium</option>
-            <option value="large">Large</option>
-            <option value="oversized">Oversized</option>
+            <option value="small">Small (&lt;40 cm)</option>
+            <option value="medium">Medium (40–70 cm)</option>
+            <option value="large">Large (70–120 cm)</option>
+            <option value="oversized">Oversized (&gt;120 cm)</option>
           </Select>
         </Field>
         <FileUploadHint />

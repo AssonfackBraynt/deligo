@@ -12,8 +12,13 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { IntelligenceModule } from './modules/intelligence/intelligence.module';
+import { CustomerContactModule } from './modules/customer-contact/customer-contact.module';
+import { DeliveryRequestModule } from './modules/delivery-request/delivery-request.module';
+import { LocationModule } from './modules/location/location.module';
 import { ProviderProfileModule } from './modules/provider-profile/provider-profile.module';
 import { UsersModule } from './modules/users/users.module';
+import { UploadModule } from './modules/upload/upload.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -26,8 +31,13 @@ import { UsersModule } from './modules/users/users.module';
     DatabaseModule,
     UsersModule,
     AuthModule,
+    CustomerContactModule,
+    DeliveryRequestModule,
+    LocationModule,
     ProviderProfileModule,
     IntelligenceModule,
+    UploadModule,
+    AdminModule,
   ],
   providers: [
     {

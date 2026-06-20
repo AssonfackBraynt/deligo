@@ -1,6 +1,7 @@
 import { ArrowRight, Bike, Building2, FileText, Package, ShoppingBag, Truck } from 'lucide-react';
 import { Container } from '@/components/layout/container';
 import { PublicHeader } from '@/components/layout/public-header';
+import { AuthRedirect } from '@/components/layout/auth-redirect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,6 +26,7 @@ const stats = [
 export default function HomePage() {
   return (
     <>
+      <AuthRedirect />
       <PublicHeader />
       <main>
         <section className="relative overflow-hidden">

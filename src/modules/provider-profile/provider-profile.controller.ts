@@ -11,6 +11,7 @@ import { ListProvidersQueryDto } from './dto/list-providers-query.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
 import { UpdateVerificationDto } from './dto/update-verification.dto';
+import { CreateVerificationRecordDto } from './dto/verification-record.dto';
 import { ProviderProfilePrivateDto, ProviderProfilePublicDto } from './dto/provider-profile-response.dto';
 import { ProviderProfileService } from './provider-profile.service';
 
@@ -36,7 +37,23 @@ export class ProviderProfileController {
     return ok(await this.service.findAll(query));
   }
 
-  // NOTE: /me must be declared before /:id so NestJS does not treat "me" as a UUID param.
+  // NOTE: /me/* routes must be declared before /:id so NestJS doesn't treat "me" as a UUID param.
+
+  @Get('me/stats')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Dashboard stats for the authenticated provider.' })
+  async getStats(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.getStats(user.id));
+  }
+
+  @Get('me/agents')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'List riders/agents for this company provider. Company types only.' })
+  async getMyAgents(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.getMyAgents(user.id));
+  }
 
   @Get('me')
   @ApiBearerAuth()
@@ -74,6 +91,25 @@ export class ProviderProfileController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return ok(await this.service.updateAvailability(user.id, dto));
+  }
+
+  @Get('me/verification-records')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Get all verification documents submitted by this provider.' })
+  async getMyVerificationRecords(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.getMyVerificationRecords(user.id));
+  }
+
+  @Post('me/verification-records')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Submit a verification document (links to an uploaded file).' })
+  async submitVerificationRecord(
+    @Body() dto: CreateVerificationRecordDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return ok(await this.service.submitVerificationRecord(user.id, dto));
   }
 
   @Patch(':id/verification')

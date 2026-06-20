@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AccountStatus } from '@common/enums/account-status.enum';
 import { ErrorCode } from '@common/errors/error-codes';
+import { normalizeCameroonPhone } from '@common/utils/phone.util';
 import { JwtPayload } from '@common/types/jwt-payload.type';
 import { UsersService, UserWithRoles } from '@modules/users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -32,7 +33,7 @@ export class AuthService {
     try {
       const user = await this.usersService.createUserWithRole({
         fullName: dto.fullName,
-        phone: dto.phone,
+        phone: normalizeCameroonPhone(dto.phone),
         email: dto.email,
         passwordHash,
         role: dto.role,
@@ -61,7 +62,7 @@ export class AuthService {
 
     const user = dto.email
       ? await this.usersService.findAuthUserByEmail(dto.email)
-      : await this.usersService.findAuthUserByPhone(dto.phone!);
+      : await this.usersService.findAuthUserByPhone(normalizeCameroonPhone(dto.phone!));
 
     if (!user?.passwordHash) {
       throw this.invalidCredentials();

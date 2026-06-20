@@ -14,14 +14,26 @@ export type ProviderSelectionMode = 'open_marketplace' | 'recommended_provider' 
 export type RequestDraft = {
   id: string;
   deliveryType?: DeliveryType;
-  pickupAddress?: string;
-  destinationAddress?: string;
+
+  // Structured pickup location (set via LocationPickerModal)
+  pickupQuarterId?: string;
+  pickupQuarterName?: string;
+  pickupTownName?: string;
+  pickupRegionName?: string;
   pickupLandmark?: string;
+
+  // Structured destination location (set via LocationPickerModal)
+  destinationQuarterId?: string;
+  destinationQuarterName?: string;
+  destinationTownName?: string;
+  destinationRegionName?: string;
   destinationLandmark?: string;
+
   expectedDeliveryDate?: string;
   expectedDeliveryTime?: string;
   estimatedDistanceKm?: number;
   estimatedDurationMinutes?: number;
+
   itemName?: string;
   itemDescription?: string;
   category?: string;
@@ -30,6 +42,7 @@ export type RequestDraft = {
   quantity?: number;
   isFragile?: boolean;
   specialInstructions?: string;
+
   providerMode?: ProviderSelectionMode;
   desiredRewardAmount?: number;
   selectedProviderId?: string;
@@ -37,9 +50,16 @@ export type RequestDraft = {
   estimatedMinPrice?: number;
   estimatedMaxPrice?: number;
   finalPrice?: number;
+
   customerName?: string;
   whatsappNumber?: string;
   isPaymentNumberSame?: boolean;
   paymentNumber?: string;
   email?: string;
+
+  // Set after contact step
+  customerContactId?: string;
+  // Set after successful API submission
+  publicTrackingCode?: string;
+  requestId?: string;
 };

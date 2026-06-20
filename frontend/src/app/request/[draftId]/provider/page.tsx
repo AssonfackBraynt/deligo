@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Search, ShieldCheck, Star } from 'lucide-react';
 import { RequestFlowLayout } from '@/components/layout/request-flow-layout';
@@ -12,7 +12,9 @@ import { RadioCard } from '@/components/ui/radio-card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { routes } from '@/lib/routes';
 import { RequestActions } from '@/features/request/components/request-actions';
-import { mockProviders, providerModes } from '@/features/request/request-data';
+import { getRecommendedProviders } from '@/features/request/delivery-request-api';
+import type { RecommendedProvider } from '@/features/request/delivery-request-api';
+import { providerModes } from '@/features/request/request-data';
 import { useRequestStore } from '@/features/request/request-store';
 import type { ProviderSelectionMode } from '@/features/request/request-types';
 
@@ -32,6 +34,13 @@ export default function ProviderSelectionPage() {
     updateDraft(draftId, { providerMode: value });
   };
 
+  function handleProviderSelect(p: { id: string; displayName: string }) {
+    updateDraft(draftId, {
+      selectedProviderId: p.id,
+      selectedProviderName: p.displayName,
+    });
+  }
+
   return (
     <RequestFlowLayout
       draftId={draftId}
@@ -50,7 +59,7 @@ export default function ProviderSelectionPage() {
           }))}
         />
 
-        {mode === 'open_marketplace' ? (
+        {mode === 'open_marketplace' && (
           <MarketplacePanel
             reward={draft?.desiredRewardAmount}
             onReward={(amount) =>
@@ -63,44 +72,30 @@ export default function ProviderSelectionPage() {
               })
             }
           />
-        ) : null}
+        )}
 
-        {mode === 'recommended_provider' ? (
-          <ProviderList
+        {mode === 'recommended_provider' && (
+          <RecommendedProviderList
+            pickupCity={draft?.pickupTownName}
             selectedProviderId={draft?.selectedProviderId}
-            onSelect={(provider) =>
-              updateDraft(draftId, {
-                providerMode: 'recommended_provider',
-                selectedProviderId: provider.id,
-                selectedProviderName: provider.name,
-                estimatedMinPrice: 1500,
-                estimatedMaxPrice: 2800,
-                finalPrice: provider.id === 'cheapest' ? 1800 : provider.id === 'fastest' ? 2600 : 2200,
-              })
-            }
+            onSelect={handleProviderSelect}
           />
-        ) : null}
+        )}
 
-        {mode === 'search_provider' ? (
+        {mode === 'search_provider' && (
           <SearchProviderPanel
+            pickupCity={draft?.pickupTownName}
             selectedProviderId={draft?.selectedProviderId}
-            onSelect={(provider) =>
-              updateDraft(draftId, {
-                providerMode: 'search_provider',
-                selectedProviderId: provider.id,
-                selectedProviderName: provider.name,
-                estimatedMinPrice: 1500,
-                estimatedMaxPrice: 2800,
-                finalPrice: provider.id === 'cheapest' ? 1800 : provider.id === 'fastest' ? 2600 : 2200,
-              })
-            }
+            onSelect={handleProviderSelect}
           />
-        ) : null}
+        )}
       </div>
       <RequestActions nextHref={routes.requestContact(draftId)} disabled={!canContinue} />
     </RequestFlowLayout>
   );
 }
+
+// ── Panels ─────────────────────────────────────────────────────────────────────
 
 function MarketplacePanel({
   reward,
@@ -136,7 +131,7 @@ function MarketplacePanel({
             min="500"
             placeholder="Enter FCFA amount"
             value={reward ?? ''}
-            onChange={(event) => onReward(Number(event.target.value))}
+            onChange={(e) => onReward(Number(e.target.value))}
           />
         </Field>
       </CardContent>
@@ -144,21 +139,55 @@ function MarketplacePanel({
   );
 }
 
-function ProviderList({
+function RecommendedProviderList({
+  pickupCity,
   selectedProviderId,
   onSelect,
 }: {
+  pickupCity?: string;
   selectedProviderId?: string;
-  onSelect: (provider: (typeof mockProviders)[number]) => void;
+  onSelect: (p: { id: string; displayName: string }) => void;
 }) {
+  const [providers, setProviders] = useState<RecommendedProvider[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getRecommendedProviders(pickupCity)
+      .then(setProviders)
+      .catch(() => setProviders([]))
+      .finally(() => setLoading(false));
+  }, [pickupCity]);
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
+        ))}
+      </div>
+    );
+  }
+
+  if (providers.length === 0) {
+    return (
+      <Card className="shadow-none">
+        <CardContent className="py-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            No providers available right now. Try Open Marketplace instead.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="grid gap-3">
-      {mockProviders.map((provider) => (
+      {providers.map((p) => (
         <ProviderCard
-          key={provider.id}
-          provider={provider}
-          selected={selectedProviderId === provider.id}
-          onSelect={() => onSelect(provider)}
+          key={p.id}
+          provider={p}
+          selected={selectedProviderId === p.id}
+          onSelect={() => onSelect({ id: p.id, displayName: p.displayName })}
         />
       ))}
     </div>
@@ -166,19 +195,61 @@ function ProviderList({
 }
 
 function SearchProviderPanel({
+  pickupCity,
   selectedProviderId,
   onSelect,
 }: {
+  pickupCity?: string;
   selectedProviderId?: string;
-  onSelect: (provider: (typeof mockProviders)[number]) => void;
+  onSelect: (p: { id: string; displayName: string }) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const [allProviders, setAllProviders] = useState<RecommendedProvider[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getRecommendedProviders(pickupCity)
+      .then(setAllProviders)
+      .catch(() => setAllProviders([]))
+      .finally(() => setLoading(false));
+  }, [pickupCity]);
+
+  const filtered = query.trim()
+    ? allProviders.filter((p) =>
+        p.displayName.toLowerCase().includes(query.toLowerCase()) ||
+        (p.baseCity?.toLowerCase().includes(query.toLowerCase()) ?? false),
+      )
+    : allProviders;
+
   return (
     <div className="space-y-4">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-        <Input className="pl-10" placeholder="Search agency, courier company, or delivery service" />
+        <Input
+          className="pl-10"
+          placeholder="Search by name or city"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </div>
-      <ProviderList selectedProviderId={selectedProviderId} onSelect={onSelect} />
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map((p) => (
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              selected={selectedProviderId === p.id}
+              onSelect={() => onSelect({ id: p.id, displayName: p.displayName })}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -188,7 +259,7 @@ function ProviderCard({
   selected,
   onSelect,
 }: {
-  provider: (typeof mockProviders)[number];
+  provider: RecommendedProvider;
   selected?: boolean;
   onSelect: () => void;
 }) {
@@ -205,17 +276,28 @@ function ProviderCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-foreground">{provider.name}</h3>
-            <Badge tone="success">Verified</Badge>
-            <Badge tone="primary">{provider.tag}</Badge>
+            <h3 className="font-semibold text-foreground">{provider.displayName}</h3>
+            {provider.verificationStatus === 'verified' && (
+              <Badge tone="success">Verified</Badge>
+            )}
+            {provider.isFeatured && <Badge tone="primary">Featured</Badge>}
           </div>
           <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <Star size={15} className="fill-warning text-warning" aria-hidden="true" />
-              {provider.rating}
+            {provider.ratingCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Star size={15} className="fill-warning text-warning" aria-hidden="true" />
+                {provider.ratingAverage.toFixed(1)}
+                <span className="text-xs">({provider.ratingCount})</span>
+              </span>
+            )}
+            {provider.baseCity && <span>{provider.baseCity}</span>}
+            <span
+              className={
+                provider.availabilityStatus === 'available' ? 'text-success' : 'text-warning'
+              }
+            >
+              {provider.availabilityStatus === 'available' ? 'Available now' : 'Busy'}
             </span>
-            <span>{provider.eta}</span>
-            <span>{provider.priceRange}</span>
           </div>
         </div>
       </div>

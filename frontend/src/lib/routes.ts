@@ -10,4 +10,26 @@ export const routes = {
   requestPayment: (draftId: string) => `/request/${draftId}/payment`,
   requestSuccess: (draftId: string) => `/request/${draftId}/success`,
   tracking: (trackingCode: string) => `/track/${trackingCode}`,
+  auth: {
+    login: '/auth/login',
+    register: '/auth/register',
+  },
+  provider: {
+    createProfile: '/provider/profile/create',
+    myProfile: '/provider/profile/me',
+    editProfile: '/provider/profile/edit',
+    directory: '/providers',
+    dashboard: '/provider/dashboard',
+    marketplace: '/provider/marketplace',
+    myRequests: '/provider/requests',
+    agents: '/provider/agents',
+  },
+  admin: {
+    dashboard: '/admin',
+    providers: '/admin/providers',
+    verifications: '/admin/verifications',
+    requests: '/admin/requests',
+    users: '/admin/users',
+    notifications: '/admin/notifications',
+  },
 };

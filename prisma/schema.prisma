@@ -190,6 +190,7 @@ model User {
   updatedBy             String?          @map("updated_by") @db.Uuid
   roles                 UserRole[]
   providerProfile       ProviderProfile?
+  customerContacts      CustomerContact[]
   agencyMembers         AgencyMember[]
   createdAgencies       Agency[]         @relation("AgencyCreatedBy")
   updatedAgencies       Agency[]         @relation("AgencyUpdatedBy")
@@ -235,7 +236,10 @@ model UserRole {
 
 model CustomerContact {
   id                String            @id @default(uuid()) @db.Uuid
+  // Null for anonymous contacts; set when an authenticated user creates the contact.
+  userId            String?           @map("user_id") @db.Uuid
   fullName          String            @map("full_name") @db.VarChar(160)
+  phone             String?           @db.VarChar(32)
   whatsappNumber    String            @map("whatsapp_number") @db.VarChar(32)
   paymentNumber     String?           @map("payment_number") @db.VarChar(32)
   email             String?           @db.VarChar(255)
@@ -243,12 +247,14 @@ model CustomerContact {
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt         DateTime?         @map("deleted_at") @db.Timestamptz
+  user              User?             @relation(fields: [userId], references: [id])
   requests          DeliveryRequest[]
   payments          Payment[]
   notifications     Notification[]
   reviews           ReviewRating[]
   auditLogs         AuditLog[]
 
+  @@index([userId], map: "idx_customer_contacts_user_id")
   @@index([whatsappNumber], map: "idx_customer_contacts_whatsapp")
   @@index([email], map: "idx_customer_contacts_email")
   @@map("customer_contacts")
@@ -341,6 +347,7 @@ model ProviderProfile {
   offers             MarketplaceOffer[]
   reviews            ReviewRating[]
   milestoneEvents    TrackingEvent[]    @relation("TrackingResponsibleProvider")
+  uploadedFiles      UploadedFile[]     @relation("ProviderUploadedFiles")
 
   @@index([providerType], map: "idx_provider_profiles_type")
   @@index([baseCity], map: "idx_provider_profiles_city")
@@ -430,18 +437,55 @@ model DeliveryRequest {
   @@map("delivery_requests")
 }
 
+model Region {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  towns     Town[]
+
+  @@map("regions")
+}
+
+model Town {
+  id        String    @id @default(uuid()) @db.Uuid
+  regionId  String    @map("region_id") @db.Uuid
+  name      String    @db.VarChar(120)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  region    Region    @relation(fields: [regionId], references: [id])
+  quarters  Quarter[]
+
+  @@unique([regionId, name])
+  @@index([regionId], map: "idx_towns_region_id")
+  @@map("towns")
+}
+
+model Quarter {
+  id                String         @id @default(uuid()) @db.Uuid
+  townId            String         @map("town_id") @db.Uuid
+  name              String         @db.VarChar(160)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  town              Town           @relation(fields: [townId], references: [id])
+  pickupRoutes      RequestRoute[] @relation("PickupQuarter")
+  destinationRoutes RequestRoute[] @relation("DestinationQuarter")
+
+  @@unique([townId, name])
+  @@index([townId], map: "idx_quarters_town_id")
+  @@map("quarters")
+}
+
 model RequestRoute {
   id                       String          @id @default(uuid()) @db.Uuid
   deliveryRequestId        String          @unique @map("delivery_request_id") @db.Uuid
-  pickupAddress            String          @map("pickup_address")
-  pickupLandmark           String?         @map("pickup_landmark")
-  pickupCity               String?         @map("pickup_city") @db.VarChar(120)
+  pickupQuarterId          String          @map("pickup_quarter_id") @db.Uuid
+  pickupLandmark           String          @map("pickup_landmark")
   pickupCountry            String?         @default("Cameroon") @map("pickup_country") @db.VarChar(120)
   pickupLat                Decimal?        @map("pickup_lat") @db.Decimal(10, 7)
   pickupLng                Decimal?        @map("pickup_lng") @db.Decimal(10, 7)
-  destinationAddress       String          @map("destination_address")
-  destinationLandmark      String?         @map("destination_landmark")
-  destinationCity          String?         @map("destination_city") @db.VarChar(120)
+  destinationQuarterId     String          @map("destination_quarter_id") @db.Uuid
+  destinationLandmark      String          @map("destination_landmark")
   destinationCountry       String?         @default("Cameroon") @map("destination_country") @db.VarChar(120)
   destinationLat           Decimal?        @map("destination_lat") @db.Decimal(10, 7)
   destinationLng           Decimal?        @map("destination_lng") @db.Decimal(10, 7)
@@ -453,9 +497,11 @@ model RequestRoute {
   updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt                DateTime?       @map("deleted_at") @db.Timestamptz
   deliveryRequest          DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+  pickupQuarter            Quarter         @relation("PickupQuarter", fields: [pickupQuarterId], references: [id])
+  destinationQuarter       Quarter         @relation("DestinationQuarter", fields: [destinationQuarterId], references: [id])
 
-  @@index([pickupCity], map: "idx_request_routes_pickup_city")
-  @@index([destinationCity], map: "idx_request_routes_destination_city")
+  @@index([pickupQuarterId], map: "idx_request_routes_pickup_quarter")
+  @@index([destinationQuarterId], map: "idx_request_routes_destination_quarter")
   @@map("request_routes")
 }
 
@@ -769,6 +815,8 @@ model VerificationRecord {
   reviewerUserId    String?                  @map("reviewer_user_id") @db.Uuid
   reviewedAt        DateTime?                @map("reviewed_at") @db.Timestamptz
   rejectionReason   String?                  @map("rejection_reason")
+  approvalNotes     String?                  @map("approval_notes")
+  expiresAt         DateTime?                @map("expires_at") @db.Timestamptz
   createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt         DateTime?                @map("deleted_at") @db.Timestamptz
@@ -862,23 +910,31 @@ model Dispute {
 }
 
 model UploadedFile {
-  id                String    @id @default(uuid()) @db.Uuid
-  uploadedByUserId  String?   @map("uploaded_by_user_id") @db.Uuid
-  customerContactId String?   @map("customer_contact_id") @db.Uuid
-  storageProvider   String    @map("storage_provider") @db.VarChar(64)
-  bucketName        String?   @map("bucket_name") @db.VarChar(160)
-  objectKey         String    @map("object_key")
-  originalFilename  String?   @map("original_filename") @db.VarChar(255)
-  mimeType          String?   @map("mime_type") @db.VarChar(120)
-  fileSizeBytes     BigInt?   @map("file_size_bytes")
-  visibility        String    @default("private") @db.VarChar(32)
+  id                String           @id @default(uuid()) @db.Uuid
+  uploadedByUserId  String?          @map("uploaded_by_user_id") @db.Uuid
+  customerContactId String?          @map("customer_contact_id") @db.Uuid
+  providerProfileId String?          @map("provider_profile_id") @db.Uuid
+  storageProvider   String           @map("storage_provider") @db.VarChar(64)
+  bucketName        String?          @map("bucket_name") @db.VarChar(160)
+  objectKey         String           @map("object_key")
+  storageUrl        String?          @map("storage_url")
+  originalFilename  String?          @map("original_filename") @db.VarChar(255)
+  mimeType          String?          @map("mime_type") @db.VarChar(120)
+  fileSizeBytes     BigInt?          @map("file_size_bytes")
+  visibility        String           @default("private") @db.VarChar(32)
   checksum          String?
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+  isEncrypted       Boolean          @default(false) @map("is_encrypted")
+  encryptionIv      String?          @map("encryption_iv") @db.VarChar(64)
+  documentPurpose   String?          @map("document_purpose") @db.VarChar(64)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz
+  providerProfile   ProviderProfile? @relation("ProviderUploadedFiles", fields: [providerProfileId], references: [id])
 
   @@index([uploadedByUserId], map: "idx_uploaded_files_user")
   @@index([customerContactId], map: "idx_uploaded_files_customer")
+  @@index([providerProfileId], map: "idx_uploaded_files_provider")
   @@index([visibility], map: "idx_uploaded_files_visibility")
+  @@index([documentPurpose], map: "idx_uploaded_files_purpose")
   @@map("uploaded_files")
 }
 

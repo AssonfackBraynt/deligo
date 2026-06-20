@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { seedLocations } from './seeds/locations.seed';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +16,9 @@ async function main() {
       create: { code, name, description },
     });
   }
+  console.log('✓ Roles seeded');
+
+  await seedLocations(prisma);
 }
 
 main()

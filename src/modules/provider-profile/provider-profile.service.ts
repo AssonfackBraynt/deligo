@@ -1,12 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProviderProfile, ProviderType, VerificationStatus } from '@prisma/client';
 import { ErrorCode } from '@common/errors/error-codes';
 import { PrismaService } from '@database/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import { CreateProviderProfileDto } from './dto/create-provider-profile.dto';
 import { ListProvidersQueryDto } from './dto/list-providers-query.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
 import { UpdateVerificationDto } from './dto/update-verification.dto';
+import { CreateVerificationRecordDto, ReviewVerificationRecordDto } from './dto/verification-record.dto';
 
 // ── Response projections ───────────────────────────────────────────────────
 
@@ -59,7 +61,23 @@ function toAdminResponse(p: ProviderProfile) {
 
 @Injectable()
 export class ProviderProfileService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationService,
+  ) {}
+
+  private async requireProfile(userId: string): Promise<ProviderProfile> {
+    const profile = await this.prisma.providerProfile.findFirst({
+      where: { userId, deletedAt: null },
+    });
+    if (!profile) {
+      throw new NotFoundException({
+        success: false,
+        error: { code: ErrorCode.ResourceNotFound, message: 'You do not have a provider profile yet.' },
+      });
+    }
+    return profile;
+  }
 
   async create(userId: string, dto: CreateProviderProfileDto) {
     const existing = await this.prisma.providerProfile.findFirst({
@@ -120,7 +138,37 @@ export class ProviderProfileService {
       this.prisma.providerProfile.count({ where }),
     ]);
 
-    return { items: items.map(toPublicResponse), total, page: query.page, limit: query.limit };
+    // Batch-fetch recent reviews for all providers in this page (single query, not N+1)
+    const providerIds = items.map((p) => p.id);
+    const allReviews = providerIds.length > 0
+      ? await this.prisma.reviewRating.findMany({
+          where: { providerProfileId: { in: providerIds }, deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: { providerProfileId: true, rating: true, comment: true, createdAt: true },
+        })
+      : [];
+
+    const reviewsByProvider = new Map<string, typeof allReviews>();
+    for (const r of allReviews) {
+      if (!r.providerProfileId) continue;
+      const bucket = reviewsByProvider.get(r.providerProfileId) ?? [];
+      if (bucket.length < 2) bucket.push(r);
+      reviewsByProvider.set(r.providerProfileId, bucket);
+    }
+
+    return {
+      items: items.map((p) => ({
+        ...toPublicResponse(p),
+        recentReviews: (reviewsByProvider.get(p.id) ?? []).map((r) => ({
+          rating: r.rating,
+          comment: r.comment,
+          createdAt: r.createdAt,
+        })),
+      })),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
   async findOnePublic(id: string) {
@@ -137,28 +185,12 @@ export class ProviderProfileService {
   }
 
   async findMyProfile(userId: string) {
-    const profile = await this.prisma.providerProfile.findFirst({
-      where: { userId, deletedAt: null },
-    });
-    if (!profile) {
-      throw new NotFoundException({
-        success: false,
-        error: { code: ErrorCode.ResourceNotFound, message: 'You do not have a provider profile yet.' },
-      });
-    }
+    const profile = await this.requireProfile(userId);
     return toPrivateResponse(profile);
   }
 
   async update(userId: string, dto: UpdateProviderProfileDto) {
-    const profile = await this.prisma.providerProfile.findFirst({
-      where: { userId, deletedAt: null },
-    });
-    if (!profile) {
-      throw new NotFoundException({
-        success: false,
-        error: { code: ErrorCode.ResourceNotFound, message: 'You do not have a provider profile yet.' },
-      });
-    }
+    const profile = await this.requireProfile(userId);
 
     const isRider = profile.providerType === ProviderType.independent_rider;
     const isCompany = COMPANY_TYPES.includes(profile.providerType);
@@ -183,16 +215,7 @@ export class ProviderProfileService {
   }
 
   async updateAvailability(userId: string, dto: UpdateAvailabilityDto) {
-    const profile = await this.prisma.providerProfile.findFirst({
-      where: { userId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!profile) {
-      throw new NotFoundException({
-        success: false,
-        error: { code: ErrorCode.ResourceNotFound, message: 'You do not have a provider profile yet.' },
-      });
-    }
+    const profile = await this.requireProfile(userId);
     const updated = await this.prisma.providerProfile.update({
       where: { id: profile.id },
       data: { availabilityStatus: dto.availabilityStatus },
@@ -215,5 +238,166 @@ export class ProviderProfileService {
       data: { verificationStatus: dto.verificationStatus },
     });
     return toAdminResponse(updated);
+  }
+
+  // ── Dashboard stats ───────────────────────────────────────────────────────
+
+  async getStats(userId: string) {
+    const profile = await this.requireProfile(userId);
+
+    const ACTIVE_STATUSES = ['provider_assigned', 'pickup_verified', 'in_transit'];
+    const DONE_STATUSES = ['delivered', 'completed'];
+
+    const [activeRequests, completedRequests, pendingOffers] = await Promise.all([
+      this.prisma.deliveryRequest.count({
+        where: {
+          selectedProviderProfileId: profile.id,
+          requestStatus: { in: ACTIVE_STATUSES as any[] },
+          deletedAt: null,
+        },
+      }),
+      this.prisma.deliveryRequest.count({
+        where: {
+          selectedProviderProfileId: profile.id,
+          requestStatus: { in: DONE_STATUSES as any[] },
+          deletedAt: null,
+        },
+      }),
+      this.prisma.marketplaceOffer.count({
+        where: {
+          providerProfileId: profile.id,
+          offerStatus: 'submitted',
+          deletedAt: null,
+        },
+      }),
+    ]);
+
+    return {
+      activeRequests,
+      completedRequests,
+      totalRequests: activeRequests + completedRequests,
+      pendingOffers,
+      ratingAverage: profile.ratingAverage.toNumber(),
+      ratingCount: profile.ratingCount,
+      providerType: profile.providerType,
+      availabilityStatus: profile.availabilityStatus,
+    };
+  }
+
+  // ── Verification Records ──────────────────────────────────────────────────
+
+  async submitVerificationRecord(userId: string, dto: CreateVerificationRecordDto) {
+    const profile = await this.requireProfile(userId);
+
+    const fileExists = await this.prisma.uploadedFile.findFirst({
+      where: { id: dto.fileId, uploadedByUserId: userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!fileExists) throw new BadRequestException({ success: false, error: { code: ErrorCode.ValidationError, message: 'File not found or not owned by you.' } });
+
+    const existing = await this.prisma.verificationRecord.findFirst({
+      where: { providerProfileId: profile.id, verificationType: dto.verificationType as any, deletedAt: null },
+    });
+    if (existing) {
+      // Update existing record (re-submit)
+      const updated = await this.prisma.verificationRecord.update({
+        where: { id: existing.id },
+        data: { documentFileId: dto.fileId, submittedValue: dto.submittedValue ?? null, status: 'pending', reviewerUserId: null, reviewedAt: null, rejectionReason: null },
+      });
+      return this.formatVerificationRecord(updated);
+    }
+
+    // First submission — transition profile to pending
+    const record = await this.prisma.$transaction(async (tx) => {
+      const r = await tx.verificationRecord.create({
+        data: {
+          providerProfileId: profile.id,
+          userId,
+          verificationType: dto.verificationType as any,
+          documentFileId: dto.fileId,
+          submittedValue: dto.submittedValue ?? null,
+          status: 'pending',
+        },
+      });
+      if (profile.verificationStatus === 'unverified') {
+        await tx.providerProfile.update({ where: { id: profile.id }, data: { verificationStatus: 'pending' } });
+      }
+      return r;
+    });
+
+    void this.notifications.notifyCustomerService({
+      event: 'VERIFICATION_SUBMITTED',
+      notes: `Provider ${profile.displayName} submitted ${dto.verificationType} document for review.`,
+    });
+
+    return this.formatVerificationRecord(record);
+  }
+
+  async getMyVerificationRecords(userId: string) {
+    const profile = await this.requireProfile(userId);
+    const records = await this.prisma.verificationRecord.findMany({
+      where: { providerProfileId: profile.id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r) => this.formatVerificationRecord(r));
+  }
+
+  private formatVerificationRecord(r: any) {
+    return {
+      id: r.id,
+      verificationType: r.verificationType,
+      status: r.status,
+      documentFileId: r.documentFileId,
+      submittedValue: r.submittedValue,
+      rejectionReason: r.rejectionReason,
+      approvalNotes: r.approvalNotes,
+      reviewedAt: r.reviewedAt,
+      expiresAt: r.expiresAt,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
+  }
+
+  // ── Company: list agents (riders) ──────────────────────────────────────────
+
+  async getMyAgents(userId: string) {
+    const profile = await this.requireProfile(userId);
+
+    if (!COMPANY_TYPES.includes(profile.providerType)) {
+      throw new ForbiddenException({
+        success: false,
+        error: { code: ErrorCode.Forbidden, message: 'Only company providers can access agent management.' },
+      });
+    }
+
+    if (!profile.agencyId) {
+      return [];
+    }
+
+    const riders = await this.prisma.rider.findMany({
+      where: { agencyId: profile.agencyId, deletedAt: null },
+      include: {
+        dispatches: {
+          where: {
+            assignmentStatus: { in: ['assigned', 'accepted', 'in_progress'] },
+            deletedAt: null,
+          },
+          select: { id: true },
+        },
+      },
+      orderBy: { fullName: 'asc' },
+    });
+
+    return riders.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      phone: r.phone,
+      vehicleType: r.vehicleType,
+      availabilityStatus: r.availabilityStatus,
+      verificationStatus: r.verificationStatus,
+      currentWorkload: r.currentWorkload,
+      activeDispatches: r.dispatches.length,
+      lastSeenAt: r.lastSeenAt,
+    }));
   }
 }
