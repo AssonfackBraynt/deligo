@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Bike, Building2, MessageSquare, ShieldCheck, Star, Truck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -97,6 +100,21 @@ export function ProviderProfileCard({ profile }: { profile: ProviderProfilePubli
               </p>
             )}
 
+            {(profile.priceInTown || profile.priceInRegion) && (
+              <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                {profile.priceInTown && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 font-medium">
+                    In-town: {profile.priceInTown.toLocaleString()} FCFA
+                  </span>
+                )}
+                {profile.priceInRegion && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 font-medium">
+                    In-region: {profile.priceInRegion.toLocaleString()} FCFA
+                  </span>
+                )}
+              </div>
+            )}
+
             {isRider && profile.serviceCoverage && (
               <p className="mt-2 line-clamp-1 text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">Coverage:</span>{' '}
@@ -104,22 +122,9 @@ export function ProviderProfileCard({ profile }: { profile: ProviderProfilePubli
               </p>
             )}
 
-            {/* Recent customer reviews */}
+            {/* Recent customer reviews — auto-sliding */}
             {reviews.length > 0 && (
-              <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/30 px-3 py-3">
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <MessageSquare size={12} aria-hidden="true" />
-                  Customer reviews
-                </p>
-                {reviews.map((r, i) => (
-                  <div key={i} className="space-y-0.5">
-                    <StarRow rating={r.rating} />
-                    <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                      &ldquo;{r.comment}&rdquo;
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <ReviewSlider reviews={reviews} />
             )}
 
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
@@ -137,5 +142,56 @@ export function ProviderProfileCard({ profile }: { profile: ProviderProfilePubli
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Auto-sliding review carousel ──────────────────────────────────────────────
+
+type Review = { rating: number; comment: string | null; createdAt: string };
+
+function ReviewSlider({ reviews }: { reviews: Review[] }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (reviews.length <= 1) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % reviews.length), 7000);
+    return () => clearInterval(t);
+  }, [reviews.length]);
+
+  const review = reviews[idx];
+  if (!review) return null;
+
+  return (
+    <div className="mt-4 rounded-lg border border-border bg-muted/30 px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <MessageSquare size={12} aria-hidden="true" />
+          Customer reviews
+        </p>
+        {reviews.length > 1 && (
+          <div className="flex items-center gap-1">
+            {reviews.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Review ${i + 1}`}
+                onClick={() => setIdx(i)}
+                className={[
+                  'size-1.5 rounded-full transition-all',
+                  i === idx ? 'bg-primary scale-125' : 'bg-border hover:bg-muted-foreground',
+                ].join(' ')}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-0.5 transition-all duration-500">
+        <StarRow rating={review.rating} />
+        <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+          &ldquo;{review.comment}&rdquo;
+        </p>
+      </div>
+    </div>
   );
 }

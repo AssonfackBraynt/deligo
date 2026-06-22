@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: routes.provider.dashboard, label: 'Dashboard' },
   { href: routes.provider.marketplace, label: 'Marketplace' },
   { href: routes.provider.myRequests, label: 'My Requests' },
+  { href: routes.provider.myRoutes, label: 'My Routes' },
   { href: routes.provider.agents, label: 'Agents' },
 ];
 

@@ -23,6 +23,7 @@ export const routes = {
     marketplace: '/provider/marketplace',
     myRequests: '/provider/requests',
     agents: '/provider/agents',
+    myRoutes: '/provider/routes',
   },
   admin: {
     dashboard: '/admin',

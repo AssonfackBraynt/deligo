@@ -148,3 +148,16 @@ export function submitReview(trackingCode: string, rating: number, comment?: str
 export function updateReview(trackingCode: string, rating: number, comment?: string) {
   return apiClient.patch<{ success: boolean }>(`/delivery-requests/track/${encodeURIComponent(trackingCode)}/review`, { rating, comment });
 }
+
+export function cancelRequest(trackingCode: string, reason?: string) {
+  return apiClient.post<{ success: boolean }>(`/delivery-requests/track/${encodeURIComponent(trackingCode)}/cancel`, { reason });
+}
+
+export function getRecommendedProvidersWithQuarters(pickupQuarterId?: string, destinationQuarterId?: string, city?: string) {
+  const params = new URLSearchParams();
+  if (city) params.set('city', city);
+  if (pickupQuarterId) params.set('pickupQuarterId', pickupQuarterId);
+  if (destinationQuarterId) params.set('destinationQuarterId', destinationQuarterId);
+  const qs = params.toString();
+  return apiClient.get<Array<{ id: string; displayName: string; providerType: string; ratingAverage: number; ratingCount: number; verificationStatus: string; availabilityStatus: string; nearbyBranchName: string | null }>>(`/delivery-requests/recommended-providers${qs ? '?' + qs : ''}`);
+}

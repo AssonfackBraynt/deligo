@@ -6,7 +6,13 @@ import type {
   ProviderOffer,
   ProviderStats,
 } from './provider-portal-types';
-import type { ProviderProfilePrivate } from '@/features/provider-profile/profile-types';
+import type {
+  BranchStats,
+  ProviderBranch,
+  ProviderProfilePrivate,
+  RiderRoute,
+  RouteMatchingJobs,
+} from '@/features/provider-profile/profile-types';
 
 // ── Provider profile ──────────────────────────────────────────────────────────
 
@@ -92,6 +98,13 @@ export function getDirectRequests(): Promise<ProviderAssignedRequest[]> {
   return apiClient.get<ProviderAssignedRequest[]>('/delivery-requests/provider/direct-requests');
 }
 
+export function abandonDelivery(
+  requestId: string,
+  dto: { agreedToTerms: true; reason: string },
+): Promise<{ success: boolean; message: string }> {
+  return apiClient.post(`/delivery-requests/${requestId}/abandon`, dto);
+}
+
 // ── Verification records ──────────────────────────────────────────────────────
 
 export type VerificationRecord = {
@@ -104,6 +117,55 @@ export type VerificationRecord = {
   createdAt: string;
   reviewedAt: string | null;
 };
+
+// ── Company Branches ──────────────────────────────────────────────────────────
+
+export function getMyBranches(): Promise<ProviderBranch[]> {
+  return apiClient.get<ProviderBranch[]>('/provider-profiles/me/branches');
+}
+
+export function createBranch(dto: {
+  name: string;
+  quarterId: string;
+  phoneNumber?: string;
+  isHeadquarters?: boolean;
+}): Promise<ProviderBranch> {
+  return apiClient.post<ProviderBranch>('/provider-profiles/me/branches', dto);
+}
+
+export function getBranchStats(branchId: string): Promise<BranchStats> {
+  return apiClient.get<BranchStats>(`/provider-profiles/me/branches/${branchId}/stats`);
+}
+
+export function deleteBranch(branchId: string): Promise<{ success: boolean }> {
+  return apiClient.delete<{ success: boolean }>(`/provider-profiles/me/branches/${branchId}`);
+}
+
+// ── Rider Routes ──────────────────────────────────────────────────────────────
+
+export function getMyRiderRoutes(): Promise<RiderRoute[]> {
+  return apiClient.get<RiderRoute[]>('/provider-profiles/me/routes');
+}
+
+export function createRiderRoute(dto: {
+  originQuarterId: string;
+  destinationQuarterId: string;
+  departureTime?: string;
+  isRecurring?: boolean;
+  recurringDays?: string[];
+}): Promise<RiderRoute> {
+  return apiClient.post<RiderRoute>('/provider-profiles/me/routes', dto);
+}
+
+export function getRouteMatchingJobs(routeId: string): Promise<RouteMatchingJobs> {
+  return apiClient.get<RouteMatchingJobs>(`/provider-profiles/me/routes/${routeId}/matching-jobs`);
+}
+
+export function deleteRiderRoute(routeId: string): Promise<{ success: boolean }> {
+  return apiClient.delete<{ success: boolean }>(`/provider-profiles/me/routes/${routeId}`);
+}
+
+// ── Verification records ──────────────────────────────────────────────────────
 
 export function getMyVerificationRecords(): Promise<VerificationRecord[]> {
   return apiClient.get<VerificationRecord[]>('/provider-profiles/me/verification-records');

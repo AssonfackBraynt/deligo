@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronLeft, MapPin, Search } from 'lucide-react';
+import { ChevronLeft, MapPin, RefreshCw, Search } from 'lucide-react';
 import { listQuartersByRegion, listRegions } from '@/features/request/location-api';
 import type { QuarterResult, Region } from '@/features/request/location-api';
 import { Button } from './button';
@@ -11,10 +11,11 @@ import { Input } from './field';
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type LocationSelection = {
+  regionId: string;
+  regionName: string;
   quarterId: string;
   quarterName: string;
   townName: string;
-  regionName: string;
   landmark: string;
 };
 
@@ -24,13 +25,25 @@ type Props = {
   onSave: (selection: LocationSelection) => void;
   title: string;
   initialValue?: LocationSelection;
+  /** When set, the region step is skipped and quarters are pre-loaded for this region. */
+  lockedRegion?: { id: string; name: string } | null;
+  /** Called when user clicks "Change region" in locked mode. Parent should clear both sides. */
+  onRequestRegionChange?: () => void;
 };
 
 type Step = 'region' | 'quarter' | 'landmark';
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function LocationPickerModal({ open, onClose, onSave, title, initialValue }: Props) {
+export function LocationPickerModal({
+  open,
+  onClose,
+  onSave,
+  title,
+  initialValue,
+  lockedRegion,
+  onRequestRegionChange,
+}: Props) {
   const [step, setStep] = useState<Step>('region');
   const [regions, setRegions] = useState<Region[]>([]);
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
@@ -42,32 +55,46 @@ export function LocationPickerModal({ open, onClose, onSave, title, initialValue
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [loadingQuarters, setLoadingQuarters] = useState(false);
 
-  // Reset and load regions each time the modal opens
+  // Reset and initialize when modal opens
   useEffect(() => {
     if (!open) return;
-    setStep('region');
-    setSelectedRegion(null);
     setSelectedQuarter(null);
     setSearch('');
     setLandmark(initialValue?.landmark ?? '');
     setLandmarkError('');
-    setLoadingRegions(true);
-    listRegions()
-      .then(setRegions)
-      .catch(() => setRegions([]))
-      .finally(() => setLoadingRegions(false));
+
+    if (lockedRegion) {
+      // Region is locked — jump straight to quarter selection
+      const region = { id: lockedRegion.id, name: lockedRegion.name };
+      setSelectedRegion(region);
+      setStep('quarter');
+      setLoadingQuarters(true);
+      listQuartersByRegion(lockedRegion.id)
+        .then(setQuarters)
+        .catch(() => setQuarters([]))
+        .finally(() => setLoadingQuarters(false));
+    } else {
+      // Free selection — start at region
+      setStep('region');
+      setSelectedRegion(null);
+      setLoadingRegions(true);
+      listRegions()
+        .then(setRegions)
+        .catch(() => setRegions([]))
+        .finally(() => setLoadingRegions(false));
+    }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load quarters whenever a region is selected
+  // Load quarters whenever a region is freely selected
   useEffect(() => {
-    if (!selectedRegion) return;
+    if (!selectedRegion || lockedRegion) return;
     setLoadingQuarters(true);
     setSearch('');
     listQuartersByRegion(selectedRegion.id)
       .then(setQuarters)
       .catch(() => setQuarters([]))
       .finally(() => setLoadingQuarters(false));
-  }, [selectedRegion]);
+  }, [selectedRegion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredQuarters = search.trim()
     ? quarters.filter(
@@ -94,19 +121,25 @@ export function LocationPickerModal({ open, onClose, onSave, title, initialValue
     }
     if (!selectedQuarter || !selectedRegion) return;
     onSave({
+      regionId: selectedRegion.id,
+      regionName: selectedRegion.name,
       quarterId: selectedQuarter.id,
       quarterName: selectedQuarter.name,
       townName: selectedQuarter.town.name,
-      regionName: selectedRegion.name,
       landmark: landmark.trim(),
     });
     onClose();
   }
 
+  function handleChangeRegion() {
+    onClose();
+    onRequestRegionChange?.();
+  }
+
   const stepLabel =
     step === 'region' ? 'Step 1 of 3 — Region' :
-    step === 'quarter' ? 'Step 2 of 3 — Quarter' :
-    'Step 3 of 3 — Landmark';
+    step === 'quarter' ? (lockedRegion ? 'Choose a quarter' : 'Step 2 of 3 — Quarter') :
+    (lockedRegion ? 'Add a landmark' : 'Step 3 of 3 — Landmark');
 
   return (
     <Dialog open={open} onClose={onClose} title={title} description={stepLabel}>
@@ -141,15 +174,32 @@ export function LocationPickerModal({ open, onClose, onSave, title, initialValue
       {/* ── Step 2: Quarter search ───────────────────────────────────────────── */}
       {step === 'quarter' && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setStep('region')}
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ChevronLeft size={16} aria-hidden="true" />
-              {selectedRegion?.name}
-            </button>
+          <div className="flex items-center justify-between gap-2">
+            {lockedRegion ? (
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin size={14} className="text-primary" />
+                <span className="font-medium text-foreground">{selectedRegion?.name}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStep('region')}
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <ChevronLeft size={16} aria-hidden="true" />
+                {selectedRegion?.name}
+              </button>
+            )}
+            {lockedRegion && onRequestRegionChange && (
+              <button
+                type="button"
+                onClick={handleChangeRegion}
+                className="flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+              >
+                <RefreshCw size={11} />
+                Change region
+              </button>
+            )}
           </div>
           <div className="relative">
             <Search

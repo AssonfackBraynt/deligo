@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
+  AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Copy,
@@ -13,6 +15,7 @@ import {
   Star,
   Truck,
   UserCheck,
+  X,
 } from 'lucide-react';
 import { Container } from '@/components/layout/container';
 import { PublicHeader } from '@/components/layout/public-header';
@@ -22,6 +25,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   getDeliveryRequestByTrackingCode,
   acceptOffer,
+  cancelRequest,
   rejectOffer,
   submitReview,
   updateReview,
@@ -73,6 +77,8 @@ const EVENT_LABELS: Record<string, string> = {
   IN_TRANSIT: 'In Transit',
   ARRIVED_DESTINATION: 'Arrived at Destination',
   DELIVERED: 'Delivered',
+  PROVIDER_ABANDONED: 'Provider Cancelled Delivery',
+  REQUEST_CANCELLED: 'Request Cancelled',
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -87,6 +93,12 @@ export default function TrackingPage() {
   // Offer actions
   const [offerAction, setOfferAction] = useState<string | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
+
+  // Cancel request flow
+  const [showCancel, setShowCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // Review form
   const [reviewRating, setReviewRating] = useState(0);
@@ -188,6 +200,21 @@ export default function TrackingPage() {
     }
   }
 
+  async function handleCancel() {
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await cancelRequest(trackingCode, cancelReason.trim() || undefined);
+      setShowCancel(false);
+      setCancelReason('');
+      await loadData();
+    } catch (err) {
+      setCancelError(err instanceof ApiError ? err.message : 'Failed to cancel request.');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   function handleEditReview() {
     if (!data?.review) return;
     setReviewRating(data.review.rating);
@@ -199,6 +226,7 @@ export default function TrackingPage() {
   const canReview = data?.requestStatus === 'delivered' || data?.requestStatus === 'completed';
   const pendingOffers = data?.offers?.filter((o) => o.status === 'submitted') ?? [];
   const showOffers = data?.fulfillmentMode === 'open_marketplace' && pendingOffers.length > 0;
+  const canCancel = data != null && ['draft', 'created', 'marketplace_open', 'offers_received'].includes(data.requestStatus);
 
   return (
     <>
@@ -493,6 +521,80 @@ export default function TrackingPage() {
                           )}
                         </div>
                       </form>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Cancel request */}
+              {canCancel && (
+                <Card className={showCancel ? 'border-danger/40' : ''}>
+                  <CardContent className="py-4">
+                    {!showCancel ? (
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-sm text-muted-foreground">
+                          No provider has accepted this request yet.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowCancel(true)}
+                          className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:text-danger hover:underline"
+                        >
+                          Cancel request
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle size={17} className="shrink-0 text-danger" />
+                            <p className="font-semibold text-foreground">Cancel this request?</p>
+                          </div>
+                          <button onClick={() => { setShowCancel(false); setCancelReason(''); setCancelError(null); }} className="text-muted-foreground hover:text-foreground">
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground">
+                          This will permanently cancel your request. You can place a new one at any time. This action cannot be undone.
+                        </p>
+
+                        {/* Optional reason */}
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground">
+                            Reason <span className="text-muted-foreground">(optional)</span>
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            placeholder="Why are you cancelling? (optional)"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-danger/40"
+                          />
+                        </div>
+
+                        {cancelError && (
+                          <div className="flex items-center gap-2 rounded-lg bg-danger/8 px-3 py-2 text-sm text-danger">
+                            <AlertCircle size={14} /> {cancelError}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-danger text-danger hover:bg-danger/10"
+                            disabled={cancelling}
+                            onClick={() => void handleCancel()}
+                          >
+                            {cancelling ? 'Cancelling…' : 'Yes, cancel request'}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => { setShowCancel(false); setCancelReason(''); setCancelError(null); }}>
+                            Keep request
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </CardContent>
                 </Card>

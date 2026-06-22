@@ -7,6 +7,7 @@ export type DeliveryType =
   | 'purchase_delivery'
   | 'business_delivery'
   | 'intercity_delivery'
+  | 'medication_delivery'
   | 'other';
 
 export type ProviderSelectionMode = 'open_marketplace' | 'recommended_provider' | 'search_provider';
@@ -19,6 +20,7 @@ export type RequestDraft = {
   pickupQuarterId?: string;
   pickupQuarterName?: string;
   pickupTownName?: string;
+  pickupRegionId?: string;
   pickupRegionName?: string;
   pickupLandmark?: string;
 
@@ -26,8 +28,12 @@ export type RequestDraft = {
   destinationQuarterId?: string;
   destinationQuarterName?: string;
   destinationTownName?: string;
+  destinationRegionId?: string;
   destinationRegionName?: string;
   destinationLandmark?: string;
+
+  // Medication delivery specific
+  medicationDescription?: string;
 
   expectedDeliveryDate?: string;
   expectedDeliveryTime?: string;

@@ -15,6 +15,8 @@ import { CreateDeliveryRequestDto } from './dto/create-delivery-request.dto';
 import { BidOfferDto } from './dto/bid-offer.dto';
 import { AssignRiderDto } from './dto/assign-rider.dto';
 import { SubmitReviewDto } from './dto/submit-review.dto';
+import { AbandonDeliveryDto } from './dto/abandon-delivery.dto';
+import { CancelDeliveryDto } from './dto/cancel-delivery.dto';
 
 // ── Tracking code ─────────────────────────────────────────────────────────────
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1020,7 +1022,32 @@ export class DeliveryRequestService {
 
   // ── Recommended providers ─────────────────────────────────────────────────
 
-  async recommendProviders(city?: string) {
+  async recommendProviders(city?: string, pickupQuarterId?: string, destinationQuarterId?: string) {
+    // Resolve town IDs for branch proximity matching
+    let pickupTownId: string | undefined;
+    let destinationTownId: string | undefined;
+    if (pickupQuarterId) {
+      const q = await this.prisma.quarter.findFirst({ where: { id: pickupQuarterId }, select: { townId: true } });
+      pickupTownId = q?.townId;
+    }
+    if (destinationQuarterId) {
+      const q = await this.prisma.quarter.findFirst({ where: { id: destinationQuarterId }, select: { townId: true } });
+      destinationTownId = q?.townId;
+    }
+
+    // Find company providers that have a branch in the pickup or destination town
+    const nearbyBranchTownIds = [pickupTownId, destinationTownId].filter(Boolean) as string[];
+    const branchMap = new Map<string, string>(); // providerProfileId → branch name
+    if (nearbyBranchTownIds.length > 0) {
+      const branches = await this.prisma.providerBranch.findMany({
+        where: { deletedAt: null, isActive: true, quarter: { townId: { in: nearbyBranchTownIds } } },
+        select: { providerProfileId: true, name: true },
+      });
+      for (const b of branches) {
+        if (!branchMap.has(b.providerProfileId)) branchMap.set(b.providerProfileId, b.name);
+      }
+    }
+
     const providers = await this.prisma.providerProfile.findMany({
       where: { deletedAt: null, availabilityStatus: { in: ['available', 'busy'] as any[] } },
       select: { id: true, displayName: true, providerType: true, baseCity: true, ratingAverage: true, ratingCount: true, verificationStatus: true, availabilityStatus: true, isFeatured: true },
@@ -1030,16 +1057,121 @@ export class DeliveryRequestService {
       .map((p) => {
         let score = 0;
         if (city && p.baseCity?.toLowerCase().includes(city.toLowerCase())) score += 10;
+        if (branchMap.has(p.id)) score += 12;
         if (p.verificationStatus === 'verified') score += 5;
         else if (p.verificationStatus === 'pending') score += 2;
         if (p.availabilityStatus === 'available') score += 3;
         else if (p.availabilityStatus === 'busy') score += 1;
         score += Number(p.ratingAverage) * 0.4;
         if (p.isFeatured) score += 1;
-        return { ...p, ratingAverage: Number(p.ratingAverage), score };
+        return { ...p, ratingAverage: Number(p.ratingAverage), nearbyBranchName: branchMap.get(p.id) ?? null, score };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(({ score: _score, ...p }) => p);
+  }
+
+  // ── Provider: abandon an accepted delivery ────────────────────────────────
+
+  async abandonDelivery(userId: string, requestId: string, dto: AbandonDeliveryDto) {
+    const profile = await this.prisma.providerProfile.findFirst({
+      where: { userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Provider profile not found.' } });
+
+    const request = await this.prisma.deliveryRequest.findFirst({
+      where: { id: requestId, selectedProviderProfileId: profile.id, deletedAt: null },
+      select: { id: true, requestStatus: true, publicTrackingCode: true, acceptedOfferId: true },
+    });
+    if (!request) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Request not found or not assigned to you.' } });
+
+    const ABANDONABLE = ['provider_assigned', 'pickup_verified', 'in_transit'];
+    if (!ABANDONABLE.includes(request.requestStatus)) {
+      throw new BadRequestException({ success: false, error: { code: ErrorCode.ValidationError, message: `Cannot abandon a request in status "${request.requestStatus}".` } });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (request.acceptedOfferId) {
+        await tx.marketplaceOffer.update({
+          where: { id: request.acceptedOfferId },
+          data: { offerStatus: 'withdrawn' },
+        });
+      }
+
+      await tx.deliveryRequest.update({
+        where: { id: request.id },
+        data: {
+          requestStatus: 'marketplace_open' as any,
+          fulfillmentMode: 'open_marketplace' as any,
+          selectedProviderProfileId: null,
+          acceptedOfferId: null,
+          providerAssignedAt: null,
+        },
+      });
+
+      await tx.trackingEvent.create({
+        data: {
+          deliveryRequestId: request.id,
+          eventType: 'PROVIDER_ABANDONED',
+          statusAfterEvent: 'marketplace_open',
+          responsibleProviderProfileId: profile.id,
+          notes: `Provider abandoned delivery. Reason: ${dto.reason}`,
+          occurredAt: new Date(),
+        },
+      });
+    });
+
+    this.trackingEvents.emit(request.publicTrackingCode);
+    return { success: true, message: 'Delivery abandoned. The request has been returned to the open marketplace.' };
+  }
+
+  // ── Customer: cancel a request before provider accepts ────────────────────
+
+  async cancelByTrackingCode(trackingCode: string, dto: CancelDeliveryDto) {
+    const request = await this.prisma.deliveryRequest.findFirst({
+      where: { publicTrackingCode: trackingCode.toUpperCase(), deletedAt: null },
+      select: { id: true, requestStatus: true, publicTrackingCode: true },
+    });
+    if (!request) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Request not found.' } });
+
+    const CANCELLABLE = ['draft', 'created', 'marketplace_open', 'offers_received'];
+    if (!CANCELLABLE.includes(request.requestStatus)) {
+      const providerAlreadyIn = ['provider_assigned', 'pickup_verified', 'in_transit', 'delivered', 'completed'].includes(request.requestStatus);
+      throw new BadRequestException({
+        success: false,
+        error: {
+          code: ErrorCode.ValidationError,
+          message: providerAlreadyIn
+            ? 'A provider has already accepted this request. You cannot cancel it at this stage.'
+            : `Cannot cancel a request with status "${request.requestStatus}".`,
+        },
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.marketplaceOffer.updateMany({
+        where: { deliveryRequestId: request.id, offerStatus: 'submitted' },
+        data: { offerStatus: 'expired' as any },
+      });
+
+      await tx.deliveryRequest.update({
+        where: { id: request.id },
+        data: { requestStatus: 'cancelled' as any, cancelledAt: new Date() },
+      });
+
+      await tx.trackingEvent.create({
+        data: {
+          deliveryRequestId: request.id,
+          eventType: 'REQUEST_CANCELLED',
+          statusAfterEvent: 'cancelled',
+          notes: dto.reason ? `Customer cancelled. Reason: ${dto.reason}` : 'Customer cancelled the request.',
+          occurredAt: new Date(),
+        },
+      });
+    });
+
+    this.trackingEvents.emit(request.publicTrackingCode);
+    return { success: true, message: 'Request cancelled successfully.' };
   }
 }

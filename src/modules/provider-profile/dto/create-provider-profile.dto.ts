@@ -84,4 +84,20 @@ export class CreateProviderProfileDto {
   @Max(180)
   @Type(() => Number)
   businessLng?: number;
+
+  // ── Pricing tiers ────────────────────────────────────────────────────────────
+
+  @ApiPropertyOptional({ example: 1500, description: 'Base price (XAF) for deliveries within the provider\'s own town.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  priceInTown?: number;
+
+  @ApiPropertyOptional({ example: 3000, description: 'Base price (XAF) for deliveries within the same region but a different town.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  priceInRegion?: number;
 }

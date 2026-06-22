@@ -330,6 +330,8 @@ model ProviderProfile {
   businessAddress    String?            @map("business_address")
   businessLat        Decimal?           @map("business_lat") @db.Decimal(10, 7)
   businessLng        Decimal?           @map("business_lng") @db.Decimal(10, 7)
+  priceInTown        Decimal?           @map("price_in_town") @db.Decimal(12, 2)
+  priceInRegion      Decimal?           @map("price_in_region") @db.Decimal(12, 2)
   ratingAverage      Decimal            @default(0) @map("rating_average") @db.Decimal(3, 2)
   ratingCount        Int                @default(0) @map("rating_count")
   verificationStatus VerificationStatus @default(unverified) @map("verification_status")
@@ -348,6 +350,8 @@ model ProviderProfile {
   reviews            ReviewRating[]
   milestoneEvents    TrackingEvent[]    @relation("TrackingResponsibleProvider")
   uploadedFiles      UploadedFile[]     @relation("ProviderUploadedFiles")
+  branches           ProviderBranch[]
+  riderRoutes        RiderRoute[]
 
   @@index([providerType], map: "idx_provider_profiles_type")
   @@index([baseCity], map: "idx_provider_profiles_city")
@@ -467,9 +471,12 @@ model Quarter {
   name              String         @db.VarChar(160)
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
-  town              Town           @relation(fields: [townId], references: [id])
-  pickupRoutes      RequestRoute[] @relation("PickupQuarter")
-  destinationRoutes RequestRoute[] @relation("DestinationQuarter")
+  town                    Town             @relation(fields: [townId], references: [id])
+  pickupRoutes            RequestRoute[]   @relation("PickupQuarter")
+  destinationRoutes       RequestRoute[]   @relation("DestinationQuarter")
+  providerBranches        ProviderBranch[]
+  riderRoutesAsOrigin     RiderRoute[]     @relation("RiderRouteOrigin")
+  riderRoutesAsDestination RiderRoute[]   @relation("RiderRouteDestination")
 
   @@unique([townId, name])
   @@index([townId], map: "idx_quarters_town_id")
@@ -1026,4 +1033,50 @@ model SystemSetting {
   updatedBy    String?  @map("updated_by") @db.Uuid
 
   @@map("system_settings")
+}
+
+// ── Provider Branches (company sub-locations) ──────────────────────────────────
+
+model ProviderBranch {
+  id                String          @id @default(uuid()) @db.Uuid
+  providerProfileId String          @map("provider_profile_id") @db.Uuid
+  quarterId         String          @map("quarter_id") @db.Uuid
+  name              String          @db.VarChar(180)
+  phoneNumber       String?         @map("phone_number") @db.VarChar(32)
+  isHeadquarters    Boolean         @default(false) @map("is_headquarters")
+  isActive          Boolean         @default(true) @map("is_active")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?       @map("deleted_at") @db.Timestamptz
+  providerProfile   ProviderProfile @relation(fields: [providerProfileId], references: [id])
+  quarter           Quarter         @relation(fields: [quarterId], references: [id])
+
+  @@index([providerProfileId], map: "idx_provider_branches_profile")
+  @@index([quarterId], map: "idx_provider_branches_quarter")
+  @@map("provider_branches")
+}
+
+// ── Rider Planned Routes ────────────────────────────────────────────────────────
+
+model RiderRoute {
+  id                   String          @id @default(uuid()) @db.Uuid
+  providerProfileId    String          @map("provider_profile_id") @db.Uuid
+  originQuarterId      String          @map("origin_quarter_id") @db.Uuid
+  destinationQuarterId String          @map("destination_quarter_id") @db.Uuid
+  departureTime        String?         @map("departure_time") @db.VarChar(8)
+  isRecurring          Boolean         @default(false) @map("is_recurring")
+  recurringDays        Json?           @map("recurring_days")
+  isActive             Boolean         @default(true) @map("is_active")
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt            DateTime?       @map("deleted_at") @db.Timestamptz
+  providerProfile      ProviderProfile @relation(fields: [providerProfileId], references: [id])
+  originQuarter        Quarter         @relation("RiderRouteOrigin", fields: [originQuarterId], references: [id])
+  destinationQuarter   Quarter         @relation("RiderRouteDestination", fields: [destinationQuarterId], references: [id])
+
+  @@index([providerProfileId], map: "idx_rider_routes_profile")
+  @@index([originQuarterId], map: "idx_rider_routes_origin")
+  @@index([destinationQuarterId], map: "idx_rider_routes_destination")
+  @@index([isActive], map: "idx_rider_routes_active")
+  @@map("rider_routes")
 }

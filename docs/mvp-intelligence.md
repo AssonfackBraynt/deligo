@@ -142,8 +142,8 @@ Unavailable riders are excluded. The highest ranked rider is returned as the sug
 
 The current services produce explainable features and outcomes. That creates a clean upgrade path:
 
-1. Store recommendation inputs, scores, accepted providers, final prices, completion outcomes, and
-   dispute/refund outcomes.
+1. Store recommendation inputs, scores, accepted providers, completion outcomes, and
+   dispute outcomes.
 2. Add analytics tables or event streams for training data.
 3. Replace individual rule weights with learned weights after enough completed deliveries.
 4. Introduce supervised ML for price prediction and provider ranking.

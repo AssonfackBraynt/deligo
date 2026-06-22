@@ -5,6 +5,7 @@ import {
   Building2,
   FileText,
   Package,
+  Pill,
   Search,
   ShoppingBag,
   Sparkles,
@@ -63,6 +64,12 @@ export const deliveryTypes: {
     title: 'Intercity Delivery',
     description: 'Send items between cities with trusted carriers.',
     icon: <Truck size={22} aria-hidden="true" />,
+  },
+  {
+    value: 'medication_delivery',
+    title: 'Medication Delivery',
+    description: 'A provider sources and delivers medication from any pharmacy in your region. Pickup location is optional.',
+    icon: <Pill size={22} aria-hidden="true" />,
   },
   {
     value: 'other',

@@ -56,6 +56,19 @@ const schema = z.object({
   businessAddress: z.string().optional().or(z.literal('')),
   businessLat: coordField(-90, 90, 'Latitude'),
   businessLng: coordField(-180, 180, 'Longitude'),
+  // pricing tiers
+  priceInTown: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.trim() === '' || (!isNaN(Number(v)) && Number(v) >= 0), {
+      message: 'Must be a positive number',
+    }),
+  priceInRegion: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.trim() === '' || (!isNaN(Number(v)) && Number(v) >= 0), {
+      message: 'Must be a positive number',
+    }),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -90,6 +103,8 @@ export default function EditProviderProfilePage() {
           businessAddress: profile.businessAddress ?? '',
           businessLat: profile.businessLat != null ? String(profile.businessLat) : '',
           businessLng: profile.businessLng != null ? String(profile.businessLng) : '',
+          priceInTown: profile.priceInTown != null ? String(profile.priceInTown) : '',
+          priceInRegion: profile.priceInRegion != null ? String(profile.priceInRegion) : '',
         });
         setLoaded(true);
       })
@@ -120,6 +135,9 @@ export default function EditProviderProfilePage() {
         if (values.businessLat?.trim()) body.businessLat = parseFloat(values.businessLat);
         if (values.businessLng?.trim()) body.businessLng = parseFloat(values.businessLng);
       }
+
+      if (values.priceInTown?.trim()) body.priceInTown = parseFloat(values.priceInTown);
+      if (values.priceInRegion?.trim()) body.priceInRegion = parseFloat(values.priceInRegion);
 
       await apiClient.patch<ProviderProfilePrivate>('/provider-profiles/me', body);
       router.push(routes.provider.myProfile);
@@ -288,6 +306,54 @@ export default function EditProviderProfilePage() {
                     {...register('phoneNumber')}
                     type="tel"
                     placeholder="+237600000000"
+                    disabled={isSubmitting}
+                  />
+                </Field>
+              </CardContent>
+            </Card>
+
+            {/* Pricing tiers */}
+            <Card>
+              <CardHeader>
+                <h2 className="font-semibold text-foreground">Delivery Pricing</h2>
+                <p className="text-sm text-muted-foreground">
+                  Set your base delivery prices so customers know what to expect. These are approximate starting prices in XAF.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Field
+                  label="Price within your town (XAF)"
+                  error={errors.priceInTown?.message}
+                  hint={
+                    isRider
+                      ? 'e.g. deliveries entirely within Yaoundé or Douala'
+                      : 'e.g. deliveries between any two quarters in your headquarters town'
+                  }
+                >
+                  <Input
+                    {...register('priceInTown')}
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="e.g. 1500"
+                    disabled={isSubmitting}
+                  />
+                </Field>
+                <Field
+                  label="Price within your region, different town (XAF)"
+                  error={errors.priceInRegion?.message}
+                  hint={
+                    isRider
+                      ? 'e.g. Yaoundé → Obala (both in Centre region)'
+                      : 'e.g. Douala → Edéa (both in Littoral region)'
+                  }
+                >
+                  <Input
+                    {...register('priceInRegion')}
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="e.g. 3000"
                     disabled={isSubmitting}
                   />
                 </Field>

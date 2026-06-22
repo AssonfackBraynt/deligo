@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { Pill } from 'lucide-react';
 import { RequestFlowLayout } from '@/components/layout/request-flow-layout';
 import { FileUploadHint } from '@/components/ui/file-upload';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
@@ -13,97 +14,141 @@ export default function ItemInformationPage() {
   const draft = useRequestStore((state) => state.getDraft(draftId));
   const updateDraft = useRequestStore((state) => state.updateDraft);
 
+  const isMedication = draft?.deliveryType === 'medication_delivery';
+  const canContinue = isMedication
+    ? Boolean(draft?.medicationDescription?.trim())
+    : Boolean(draft?.itemName?.trim());
+
   return (
     <RequestFlowLayout
       draftId={draftId}
       step="item"
-      title="What is being delivered?"
-      description="Give providers enough item detail to price and handle the delivery responsibly."
+      title={isMedication ? 'What medication do you need?' : 'What is being delivered?'}
+      description={
+        isMedication
+          ? 'Describe the medication or prescription so the provider can source it correctly from a pharmacy.'
+          : 'Give providers enough item detail to price and handle the delivery responsibly.'
+      }
       backHref={routes.requestRoute(draftId)}
     >
       <div className="grid gap-4">
-        <Field label="Item Name">
-          <Input
-            value={draft?.itemName ?? ''}
-            onChange={(event) => updateDraft(draftId, { itemName: event.target.value })}
-            placeholder="Documents, package, groceries"
-          />
-        </Field>
-        <Field label="Item Description">
-          <Textarea
-            value={draft?.itemDescription ?? ''}
-            onChange={(event) => updateDraft(draftId, { itemDescription: event.target.value })}
-            placeholder="Describe the item and handling needs"
-          />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Category">
-            <Select
-              value={draft?.category ?? ''}
-              onChange={(event) => updateDraft(draftId, { category: event.target.value })}
-            >
-              <option value="">Select</option>
-              <option value="document">Document</option>
-              <option value="electronics">Electronics</option>
-              <option value="clothing">Clothing</option>
-              <option value="food">Food</option>
-              <option value="medical">Medical</option>
-              <option value="fragile">Fragile</option>
-              <option value="vehicle_parts">Vehicle Parts</option>
-              <option value="furniture">Furniture</option>
-              <option value="other">Other</option>
-            </Select>
-          </Field>
-          <Field label="Weight">
-            <Input
-              type="number"
-              min="0"
-              step="0.1"
-              value={draft?.weightKg ?? ''}
-              onChange={(event) => updateDraft(draftId, { weightKg: Number(event.target.value) })}
-              placeholder="kg"
-            />
-          </Field>
-          <Field label="Quantity">
-            <Input
-              type="number"
-              min="1"
-              value={draft?.quantity ?? 1}
-              onChange={(event) => updateDraft(draftId, { quantity: Number(event.target.value) })}
-            />
-          </Field>
-        </div>
-        <Field label="Size">
-          <Select
-            value={draft?.sizeLabel ?? ''}
-            onChange={(event) => updateDraft(draftId, { sizeLabel: event.target.value })}
-          >
-            <option value="">Select size</option>
-            <option value="small">Small (&lt;40 cm)</option>
-            <option value="medium">Medium (40–70 cm)</option>
-            <option value="large">Large (70–120 cm)</option>
-            <option value="oversized">Oversized (&gt;120 cm)</option>
-          </Select>
-        </Field>
-        <FileUploadHint />
-        <label className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface px-4">
-          <span className="font-semibold text-foreground">Fragile Item</span>
-          <input
-            type="checkbox"
-            className="size-5 accent-primary"
-            checked={draft?.isFragile ?? false}
-            onChange={(event) => updateDraft(draftId, { isFragile: event.target.checked })}
-          />
-        </label>
-        <Field label="Special Instructions">
+        {/* Medication-specific fields */}
+        {isMedication && (
+          <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Pill size={15} className="text-warning" />
+              Medication Request
+            </div>
+            <Field label="Medication / Prescription Description *">
+              <Textarea
+                value={draft?.medicationDescription ?? ''}
+                onChange={(e) => updateDraft(draftId, { medicationDescription: e.target.value })}
+                placeholder="E.g. Doliprane 500mg (2 boxes), Amoxicillin 500mg as per prescription from Dr. Nkolo — any pharmacy in Yaoundé Centre"
+                rows={4}
+              />
+            </Field>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Be as specific as possible — include dosage, quantity, and whether you have a prescription. The provider will contact you to confirm before purchasing.
+            </p>
+          </div>
+        )}
+
+        {/* Standard fields */}
+        {!isMedication && (
+          <>
+            <Field label="Item Name">
+              <Input
+                value={draft?.itemName ?? ''}
+                onChange={(event) => updateDraft(draftId, { itemName: event.target.value })}
+                placeholder="Documents, package, groceries"
+              />
+            </Field>
+            <Field label="Item Description">
+              <Textarea
+                value={draft?.itemDescription ?? ''}
+                onChange={(event) => updateDraft(draftId, { itemDescription: event.target.value })}
+                placeholder="Describe the item and handling needs"
+              />
+            </Field>
+          </>
+        )}
+        {/* Physical item properties — hidden for medication */}
+        {!isMedication && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Category">
+                <Select
+                  value={draft?.category ?? ''}
+                  onChange={(event) => updateDraft(draftId, { category: event.target.value })}
+                >
+                  <option value="">Select</option>
+                  <option value="document">Document</option>
+                  <option value="electronics">Electronics</option>
+                  <option value="clothing">Clothing</option>
+                  <option value="food">Food</option>
+                  <option value="medical">Medical</option>
+                  <option value="fragile">Fragile</option>
+                  <option value="vehicle_parts">Vehicle Parts</option>
+                  <option value="furniture">Furniture</option>
+                  <option value="other">Other</option>
+                </Select>
+              </Field>
+              <Field label="Weight">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={draft?.weightKg ?? ''}
+                  onChange={(event) => updateDraft(draftId, { weightKg: Number(event.target.value) })}
+                  placeholder="kg"
+                />
+              </Field>
+              <Field label="Quantity">
+                <Input
+                  type="number"
+                  min="1"
+                  value={draft?.quantity ?? 1}
+                  onChange={(event) => updateDraft(draftId, { quantity: Number(event.target.value) })}
+                />
+              </Field>
+            </div>
+            <Field label="Size">
+              <Select
+                value={draft?.sizeLabel ?? ''}
+                onChange={(event) => updateDraft(draftId, { sizeLabel: event.target.value })}
+              >
+                <option value="">Select size</option>
+                <option value="small">Small (&lt;40 cm)</option>
+                <option value="medium">Medium (40–70 cm)</option>
+                <option value="large">Large (70–120 cm)</option>
+                <option value="oversized">Oversized (&gt;120 cm)</option>
+              </Select>
+            </Field>
+            <FileUploadHint />
+            <label className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface px-4">
+              <span className="font-semibold text-foreground">Fragile Item</span>
+              <input
+                type="checkbox"
+                className="size-5 accent-primary"
+                checked={draft?.isFragile ?? false}
+                onChange={(event) => updateDraft(draftId, { isFragile: event.target.checked })}
+              />
+            </label>
+          </>
+        )}
+        <Field label={isMedication ? 'Additional Instructions' : 'Special Instructions'}>
           <Textarea
             value={draft?.specialInstructions ?? ''}
             onChange={(event) => updateDraft(draftId, { specialInstructions: event.target.value })}
-            placeholder="Pickup notes, delivery notes, safety instructions"
+            placeholder={
+              isMedication
+                ? 'Delivery notes, door code, preferred pharmacy brand, etc.'
+                : 'Pickup notes, delivery notes, safety instructions'
+            }
           />
         </Field>
       </div>
-      <RequestActions nextHref={routes.requestProvider(draftId)} disabled={!draft?.itemName} />
+      <RequestActions nextHref={routes.requestProvider(draftId)} disabled={!canContinue} />
     </RequestFlowLayout>
   );
 }

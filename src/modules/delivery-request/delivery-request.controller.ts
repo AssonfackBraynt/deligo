@@ -14,6 +14,8 @@ import { CreateDeliveryRequestDto } from './dto/create-delivery-request.dto';
 import { BidOfferDto } from './dto/bid-offer.dto';
 import { AssignRiderDto } from './dto/assign-rider.dto';
 import { SubmitReviewDto } from './dto/submit-review.dto';
+import { AbandonDeliveryDto } from './dto/abandon-delivery.dto';
+import { CancelDeliveryDto } from './dto/cancel-delivery.dto';
 
 @ApiTags('Delivery Requests')
 @Controller('delivery-requests')
@@ -88,9 +90,13 @@ export class DeliveryRequestController {
 
   @Get('recommended-providers')
   @Public()
-  @ApiOperation({ summary: 'Ranked provider list. Pass ?city=Douala to boost local providers.' })
-  async recommendProviders(@Query('city') city?: string) {
-    return ok(await this.service.recommendProviders(city));
+  @ApiOperation({ summary: 'Ranked provider list. Supports ?city=, ?pickupQuarterId=, ?destinationQuarterId= for branch-proximity boosting.' })
+  async recommendProviders(
+    @Query('city') city?: string,
+    @Query('pickupQuarterId') pickupQuarterId?: string,
+    @Query('destinationQuarterId') destinationQuarterId?: string,
+  ) {
+    return ok(await this.service.recommendProviders(city, pickupQuarterId, destinationQuarterId));
   }
 
   // ── Customer: My requests ──────────────────────────────────────────────────
@@ -215,5 +221,31 @@ export class DeliveryRequestController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return ok(await this.service.assignRider(user.id, id, dto));
+  }
+
+  // ── Provider: abandon an accepted delivery ─────────────────────────────────
+
+  @Post(':id/abandon')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Provider abandons an accepted delivery after agreeing to liability terms and providing a reason. Request returns to open marketplace.' })
+  async abandonDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AbandonDeliveryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return ok(await this.service.abandonDelivery(user.id, id, dto));
+  }
+
+  // ── Customer: cancel a request (before provider accepts) ──────────────────
+
+  @Post('track/:code/cancel')
+  @Public()
+  @ApiOperation({ summary: 'Customer cancels a request that has no accepted provider yet.' })
+  async cancelByTrackingCode(
+    @Param('code') code: string,
+    @Body() dto: CancelDeliveryDto,
+  ) {
+    return ok(await this.service.cancelByTrackingCode(code, dto));
   }
 }

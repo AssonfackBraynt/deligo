@@ -9,6 +9,8 @@ import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
 import { UpdateVerificationDto } from './dto/update-verification.dto';
 import { CreateVerificationRecordDto, ReviewVerificationRecordDto } from './dto/verification-record.dto';
+import { CreateBranchDto } from './dto/create-branch.dto';
+import { CreateRiderRouteDto } from './dto/create-rider-route.dto';
 
 // ── Response projections ───────────────────────────────────────────────────
 
@@ -399,5 +401,256 @@ export class ProviderProfileService {
       activeDispatches: r.dispatches.length,
       lastSeenAt: r.lastSeenAt,
     }));
+  }
+
+  // ── Company Branch Locations ───────────────────────────────────────────────
+
+  async createBranch(userId: string, dto: CreateBranchDto) {
+    const profile = await this.requireProfile(userId);
+    if (!COMPANY_TYPES.includes(profile.providerType)) {
+      throw new ForbiddenException({ success: false, error: { code: ErrorCode.Forbidden, message: 'Only company providers can manage branch locations.' } });
+    }
+
+    const quarter = await this.prisma.quarter.findFirst({
+      where: { id: dto.quarterId },
+      select: { id: true, name: true, town: { select: { id: true, name: true, region: { select: { name: true } } } } },
+    });
+    if (!quarter) throw new BadRequestException({ success: false, error: { code: ErrorCode.ValidationError, message: 'Quarter not found.' } });
+
+    const branch = await this.prisma.providerBranch.create({
+      data: {
+        providerProfileId: profile.id,
+        quarterId: dto.quarterId,
+        name: dto.name,
+        phoneNumber: dto.phoneNumber ?? null,
+        isHeadquarters: dto.isHeadquarters ?? false,
+      },
+    });
+    return this.formatBranch(branch, quarter);
+  }
+
+  async getMyBranches(userId: string) {
+    const profile = await this.requireProfile(userId);
+    const branches = await this.prisma.providerBranch.findMany({
+      where: { providerProfileId: profile.id, deletedAt: null },
+      include: { quarter: { include: { town: { include: { region: { select: { name: true } } } } } } },
+      orderBy: [{ isHeadquarters: 'desc' }, { createdAt: 'asc' }],
+    });
+    return branches.map((b) => this.formatBranch(b, b.quarter));
+  }
+
+  async deleteBranch(userId: string, branchId: string) {
+    const profile = await this.requireProfile(userId);
+    const branch = await this.prisma.providerBranch.findFirst({
+      where: { id: branchId, providerProfileId: profile.id, deletedAt: null },
+    });
+    if (!branch) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Branch not found.' } });
+    await this.prisma.providerBranch.update({ where: { id: branchId }, data: { deletedAt: new Date(), isActive: false } });
+    return { success: true };
+  }
+
+  async getBranchStats(userId: string, branchId: string) {
+    const profile = await this.requireProfile(userId);
+    const branch = await this.prisma.providerBranch.findFirst({
+      where: { id: branchId, providerProfileId: profile.id, deletedAt: null },
+      include: { quarter: { include: { town: { include: { region: { select: { name: true } } } } } } },
+    });
+    if (!branch) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Branch not found.' } });
+
+    const townId = branch.quarter.townId;
+    const ACTIVE = ['provider_assigned', 'pickup_verified', 'in_transit'];
+    const DONE = ['delivered', 'completed'];
+
+    const [activeRequests, completedDeliveries] = await Promise.all([
+      this.prisma.deliveryRequest.count({
+        where: {
+          selectedProviderProfileId: profile.id,
+          requestStatus: { in: ACTIVE as any[] },
+          deletedAt: null,
+          OR: [
+            { route: { pickupQuarter: { townId } } },
+            { route: { destinationQuarter: { townId } } },
+          ],
+        },
+      }),
+      this.prisma.deliveryRequest.count({
+        where: {
+          selectedProviderProfileId: profile.id,
+          requestStatus: { in: DONE as any[] },
+          deletedAt: null,
+          OR: [
+            { route: { pickupQuarter: { townId } } },
+            { route: { destinationQuarter: { townId } } },
+          ],
+        },
+      }),
+    ]);
+
+    return {
+      branchId: branch.id,
+      name: branch.name,
+      isHeadquarters: branch.isHeadquarters,
+      isActive: branch.isActive,
+      phoneNumber: branch.phoneNumber,
+      location: `${branch.quarter.name}, ${branch.quarter.town.name}, ${branch.quarter.town.region.name}`,
+      townId,
+      activeRequests,
+      completedDeliveries,
+    };
+  }
+
+  private formatBranch(branch: any, quarter: any) {
+    return {
+      id: branch.id,
+      name: branch.name,
+      phoneNumber: branch.phoneNumber,
+      isHeadquarters: branch.isHeadquarters,
+      isActive: branch.isActive,
+      quarterId: branch.quarterId ?? quarter.id,
+      quarterName: quarter.name,
+      townName: quarter.town?.name ?? '',
+      regionName: quarter.town?.region?.name ?? '',
+      location: `${quarter.name}, ${quarter.town?.name ?? ''}, ${quarter.town?.region?.name ?? ''}`,
+      createdAt: branch.createdAt,
+    };
+  }
+
+  // ── Rider Planned Routes ───────────────────────────────────────────────────
+
+  async createRiderRoute(userId: string, dto: CreateRiderRouteDto) {
+    const profile = await this.requireProfile(userId);
+    if (profile.providerType !== ProviderType.independent_rider) {
+      throw new ForbiddenException({ success: false, error: { code: ErrorCode.Forbidden, message: 'Only independent riders can create planned routes.' } });
+    }
+
+    const [originQ, destinationQ] = await Promise.all([
+      this.prisma.quarter.findFirst({ where: { id: dto.originQuarterId }, include: { town: { include: { region: { select: { name: true } } } } } }),
+      this.prisma.quarter.findFirst({ where: { id: dto.destinationQuarterId }, include: { town: { include: { region: { select: { name: true } } } } } }),
+    ]);
+    if (!originQ) throw new BadRequestException({ success: false, error: { code: ErrorCode.ValidationError, message: 'Origin quarter not found.' } });
+    if (!destinationQ) throw new BadRequestException({ success: false, error: { code: ErrorCode.ValidationError, message: 'Destination quarter not found.' } });
+
+    const route = await this.prisma.riderRoute.create({
+      data: {
+        providerProfileId: profile.id,
+        originQuarterId: dto.originQuarterId,
+        destinationQuarterId: dto.destinationQuarterId,
+        departureTime: dto.departureTime ?? null,
+        isRecurring: dto.isRecurring ?? false,
+        recurringDays: dto.recurringDays ?? [],
+      },
+    });
+    return this.formatRiderRoute(route, originQ, destinationQ);
+  }
+
+  async getMyRiderRoutes(userId: string) {
+    const profile = await this.requireProfile(userId);
+    const routes = await this.prisma.riderRoute.findMany({
+      where: { providerProfileId: profile.id, deletedAt: null },
+      include: {
+        originQuarter: { include: { town: { include: { region: { select: { name: true } } } } } },
+        destinationQuarter: { include: { town: { include: { region: { select: { name: true } } } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return routes.map((r) => this.formatRiderRoute(r, r.originQuarter, r.destinationQuarter));
+  }
+
+  async deleteRiderRoute(userId: string, routeId: string) {
+    const profile = await this.requireProfile(userId);
+    const route = await this.prisma.riderRoute.findFirst({
+      where: { id: routeId, providerProfileId: profile.id, deletedAt: null },
+    });
+    if (!route) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Route not found.' } });
+    await this.prisma.riderRoute.update({ where: { id: routeId }, data: { deletedAt: new Date(), isActive: false } });
+    return { success: true };
+  }
+
+  async getRouteMatchingJobs(userId: string, routeId: string) {
+    const profile = await this.requireProfile(userId);
+    const route = await this.prisma.riderRoute.findFirst({
+      where: { id: routeId, providerProfileId: profile.id, deletedAt: null },
+      include: {
+        originQuarter: { select: { townId: true, name: true, town: { select: { name: true } } } },
+        destinationQuarter: { select: { townId: true, name: true, town: { select: { name: true } } } },
+      },
+    });
+    if (!route) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Route not found.' } });
+
+    const originTownId = route.originQuarter.townId;
+    const destinationTownId = route.destinationQuarter.townId;
+
+    const OPEN_STATUSES = ['created', 'marketplace_open', 'offers_received'];
+
+    const requests = await this.prisma.deliveryRequest.findMany({
+      where: {
+        deletedAt: null,
+        requestStatus: { in: OPEN_STATUSES as any[] },
+        route: {
+          pickupQuarter: { townId: originTownId },
+          destinationQuarter: { townId: destinationTownId },
+        },
+      },
+      include: {
+        route: {
+          include: {
+            pickupQuarter: { include: { town: { include: { region: { select: { name: true } } } } } },
+            destinationQuarter: { include: { town: { include: { region: { select: { name: true } } } } } },
+          },
+        },
+        items: { select: { itemName: true, category: true, quantity: true, isFragile: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+
+    const formatLocation = (q: any) => q ? `${q.name}, ${q.town?.name ?? ''}, ${q.town?.region?.name ?? ''}` : '';
+
+    return {
+      routeId: route.id,
+      originTown: route.originQuarter.town?.name ?? '',
+      destinationTown: route.destinationQuarter.town?.name ?? '',
+      matchingJobs: requests.map((req) => ({
+        id: req.id,
+        trackingCode: req.publicTrackingCode,
+        requestStatus: req.requestStatus,
+        deliveryType: req.deliveryType,
+        desiredRewardAmount: req.desiredRewardAmount ? Number(req.desiredRewardAmount) : null,
+        estimatedDeliveryCost: req.deliveryCost ? Number(req.deliveryCost) : null,
+        createdAt: req.createdAt,
+        route: req.route ? {
+          pickup: formatLocation(req.route.pickupQuarter),
+          pickupLandmark: req.route.pickupLandmark ?? '',
+          destination: formatLocation(req.route.destinationQuarter),
+          destinationLandmark: req.route.destinationLandmark ?? '',
+        } : null,
+        items: {
+          count: req.items.length,
+          hasFragile: req.items.some((i: any) => i.isFragile),
+          summary: req.items.map((i: any) => i.itemName).slice(0, 3).join(', '),
+        },
+      })),
+    };
+  }
+
+  private formatRiderRoute(route: any, originQ: any, destinationQ: any) {
+    return {
+      id: route.id,
+      originQuarterId: route.originQuarterId,
+      originQuarterName: originQ.name,
+      originTownName: originQ.town?.name ?? '',
+      originRegionName: originQ.town?.region?.name ?? '',
+      originLabel: `${originQ.name}, ${originQ.town?.name ?? ''}`,
+      destinationQuarterId: route.destinationQuarterId,
+      destinationQuarterName: destinationQ.name,
+      destinationTownName: destinationQ.town?.name ?? '',
+      destinationRegionName: destinationQ.town?.region?.name ?? '',
+      destinationLabel: `${destinationQ.name}, ${destinationQ.town?.name ?? ''}`,
+      departureTime: route.departureTime,
+      isRecurring: route.isRecurring,
+      recurringDays: route.recurringDays ?? [],
+      isActive: route.isActive,
+      createdAt: route.createdAt,
+    };
   }
 }

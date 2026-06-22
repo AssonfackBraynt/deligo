@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { Public } from '@common/decorators/public.decorator';
@@ -12,6 +12,8 @@ import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
 import { UpdateVerificationDto } from './dto/update-verification.dto';
 import { CreateVerificationRecordDto } from './dto/verification-record.dto';
+import { CreateBranchDto } from './dto/create-branch.dto';
+import { CreateRiderRouteDto } from './dto/create-rider-route.dto';
 import { ProviderProfilePrivateDto, ProviderProfilePublicDto } from './dto/provider-profile-response.dto';
 import { ProviderProfileService } from './provider-profile.service';
 
@@ -122,5 +124,85 @@ export class ProviderProfileController {
     @Body() dto: UpdateVerificationDto,
   ) {
     return ok(await this.service.updateVerification(id, dto));
+  }
+
+  // ── Company Branch Locations ───────────────────────────────────────────────
+
+  @Post('me/branches')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Company providers: add a branch/sub-location at a specific quarter.' })
+  async createBranch(@Body() dto: CreateBranchDto, @CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.createBranch(user.id, dto));
+  }
+
+  @Get('me/branches')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'List all branches for this company provider.' })
+  async getMyBranches(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.getMyBranches(user.id));
+  }
+
+  @Get('me/branches/:branchId/stats')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Stats for a specific branch (active requests, completed deliveries in the branch town).' })
+  async getBranchStats(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return ok(await this.service.getBranchStats(user.id, branchId));
+  }
+
+  @Delete('me/branches/:branchId')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Remove a branch location.' })
+  async deleteBranch(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return ok(await this.service.deleteBranch(user.id, branchId));
+  }
+
+  // ── Rider Planned Routes ───────────────────────────────────────────────────
+
+  @Post('me/routes')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Independent riders: post a planned route (origin quarter → destination quarter).' })
+  async createRiderRoute(@Body() dto: CreateRiderRouteDto, @CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.createRiderRoute(user.id, dto));
+  }
+
+  @Get('me/routes')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'List all planned routes for this rider.' })
+  async getMyRiderRoutes(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.getMyRiderRoutes(user.id));
+  }
+
+  @Get('me/routes/:routeId/matching-jobs')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Get open delivery requests that match a planned rider route (same-town proximity).' })
+  async getRouteMatchingJobs(
+    @Param('routeId', ParseUUIDPipe) routeId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return ok(await this.service.getRouteMatchingJobs(user.id, routeId));
+  }
+
+  @Delete('me/routes/:routeId')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Deactivate / remove a planned route.' })
+  async deleteRiderRoute(
+    @Param('routeId', ParseUUIDPipe) routeId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return ok(await this.service.deleteRiderRoute(user.id, routeId));
   }
 }
