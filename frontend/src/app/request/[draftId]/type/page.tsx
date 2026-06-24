@@ -7,11 +7,12 @@ import { routes } from '@/lib/routes';
 import { RequestActions } from '@/features/request/components/request-actions';
 import { deliveryTypes } from '@/features/request/request-data';
 import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
 import type { DeliveryType } from '@/features/request/request-types';
 
 export default function DeliveryTypePage() {
   const { draftId } = useParams<{ draftId: string }>();
-  const draft = useRequestStore((state) => state.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const updateDraft = useRequestStore((state) => state.updateDraft);
 
   return (

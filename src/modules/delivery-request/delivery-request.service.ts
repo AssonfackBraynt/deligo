@@ -10,6 +10,7 @@ import type { DeliveryRequest, ProviderProfile, ProviderType, Quarter, Region, R
 import { ErrorCode } from '@common/errors/error-codes';
 import { PrismaService } from '@database/prisma.service';
 import { NotificationService } from '../notification/notification.service';
+import { DeliGoGateway } from '../gateway/deligo.gateway';
 import { TrackingEventsService } from './tracking-events.service';
 import { CreateDeliveryRequestDto } from './dto/create-delivery-request.dto';
 import { BidOfferDto } from './dto/bid-offer.dto';
@@ -125,6 +126,7 @@ function toPrivateResponse(r: WithRelations, extras: { events?: any[] } = {}) {
       sizeLabel: item.sizeLabel,
       isFragile: item.isFragile,
       specialInstructions: item.specialInstructions,
+      photoFileId: item.photoFileId ?? null,
     })),
     events: extras.events ?? [],
   };
@@ -151,6 +153,7 @@ function toMarketplaceCard(r: WithRelations) {
       hasFragile: r.items.some((i) => i.isFragile),
       categories: [...new Set(r.items.map((i) => i.category).filter(Boolean))] as string[],
       summary: r.items.map((i) => i.itemName).join(', '),
+      photoFileId: r.items[0]?.photoFileId ?? null,
     },
   };
 }
@@ -206,6 +209,7 @@ export class DeliveryRequestService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
     private readonly trackingEvents: TrackingEventsService,
+    private readonly gateway: DeliGoGateway,
   ) {}
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -380,6 +384,7 @@ export class DeliveryRequestService {
           quantity: item.quantity ?? 1,
           isFragile: item.isFragile ?? false,
           specialInstructions: item.specialInstructions ?? null,
+          photoFileId: item.photoFileId ?? null,
         })),
       });
 
@@ -422,6 +427,14 @@ export class DeliveryRequestService {
       pickup: pickupLabel,
       destination: destinationLabel,
     });
+
+    // WebSocket: notify connected providers
+    if (!isDirect) {
+      this.gateway.emitMarketplaceNew(toMarketplaceCard(full as WithRelations));
+      this.gateway.emitAdminStatsChanged();
+    } else if (dto.selectedProviderProfileId) {
+      this.gateway.emitDirectRequestNew(dto.selectedProviderProfileId);
+    }
 
     return toPrivateResponse(full as WithRelations);
   }
@@ -510,6 +523,9 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
+    this.gateway.emitMarketplaceRemoved(request.id);
+    this.gateway.emitAdminStatsChanged();
 
     void this.notifications.notifyCustomerService({
       event: 'BID_ACCEPTED',
@@ -563,26 +579,43 @@ export class DeliveryRequestService {
     return toPrivateResponse(request as WithRelations);
   }
 
-  // ── Provider: Marketplace ──────────────────────────────────────────────────
+  // ── Provider region filter (shared by marketplace list + badge count) ────────
 
-  async listMarketplace(userId: string) {
+  private async resolveProviderRegionFilter(userId: string): Promise<{ profileId: string; locationFilter: any }> {
     const profile = await this.requireProviderProfile(userId);
     const isCompany = COMPANY_PROVIDER_TYPES.includes(profile.providerType);
 
-    let locationFilter: any = {};
+    let cityName: string | null = null;
     if (!isCompany && profile.baseCity) {
-      locationFilter = { route: { pickupQuarter: { town: { name: { contains: profile.baseCity, mode: 'insensitive' } } } } };
+      cityName = profile.baseCity;
     } else if (isCompany && profile.agencyId) {
       const agency = await this.prisma.agency.findFirst({ where: { id: profile.agencyId }, select: { city: true } });
-      if (agency?.city) {
-        locationFilter = { route: { pickupQuarter: { town: { name: { contains: agency.city, mode: 'insensitive' } } } } };
+      cityName = agency?.city ?? null;
+    }
+
+    let locationFilter: any = {};
+    if (cityName) {
+      const town = await this.prisma.town.findFirst({
+        where: { name: { equals: cityName, mode: 'insensitive' } },
+        select: { regionId: true },
+      });
+      if (town?.regionId) {
+        locationFilter = { route: { pickupQuarter: { town: { regionId: town.regionId } } } };
       }
     }
+
+    return { profileId: profile.id, locationFilter };
+  }
+
+  // ── Provider: Marketplace ──────────────────────────────────────────────────
+
+  async listMarketplace(userId: string) {
+    const { locationFilter } = await this.resolveProviderRegionFilter(userId);
 
     const requests = await this.prisma.deliveryRequest.findMany({
       where: {
         deletedAt: null,
-        requestStatus: { in: ['created', 'offers_received'] },
+        requestStatus: { in: ['created', 'offers_received', 'marketplace_open'] },
         fulfillmentMode: 'open_marketplace',
         selectedProviderProfileId: null,
         ...locationFilter,
@@ -593,6 +626,34 @@ export class DeliveryRequestService {
     });
 
     return requests.map((r) => toMarketplaceCard(r as WithRelations));
+  }
+
+  // ── Provider: Badge counts (nav notification dots) ────────────────────────
+
+  async getBadgeCounts(userId: string) {
+    const { profileId, locationFilter } = await this.resolveProviderRegionFilter(userId);
+
+    const [marketplaceCount, directCount] = await Promise.all([
+      this.prisma.deliveryRequest.count({
+        where: {
+          deletedAt: null,
+          requestStatus: { in: ['created', 'offers_received', 'marketplace_open'] },
+          fulfillmentMode: 'open_marketplace',
+          selectedProviderProfileId: null,
+          ...locationFilter,
+        },
+      }),
+      this.prisma.deliveryRequest.count({
+        where: {
+          selectedProviderProfileId: profileId,
+          fulfillmentMode: { in: ['recommended_provider', 'search_provider'] },
+          requestStatus: 'created',
+          deletedAt: null,
+        },
+      }),
+    ]);
+
+    return { marketplaceCount, directCount };
   }
 
   // ── Provider: Direct requests (customer selected this provider) ────────────
@@ -642,6 +703,8 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
+    this.gateway.emitAdminStatsChanged();
 
     void this.notifications.notifyCustomerService({
       event: 'PROVIDER_ASSIGNED',
@@ -723,6 +786,9 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
+    this.gateway.emitMarketplaceRemoved(requestId);
+    this.gateway.emitAdminStatsChanged();
 
     void this.notifications.notifyCustomerService({
       event: 'PROVIDER_ASSIGNED',
@@ -767,6 +833,7 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
 
     void this.notifications.notifyCustomerService({
       event: 'NEW_BID',
@@ -820,6 +887,8 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
+    if (action === 'deliver') this.gateway.emitAdminStatsChanged();
 
     if (action === 'deliver') {
       void this.notifications.notifyCustomerService({
@@ -1123,6 +1192,7 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
     return { success: true, message: 'Delivery abandoned. The request has been returned to the open marketplace.' };
   }
 
@@ -1172,6 +1242,8 @@ export class DeliveryRequestService {
     });
 
     this.trackingEvents.emit(request.publicTrackingCode);
+    this.gateway.emitTrackingUpdate(request.publicTrackingCode);
+    this.gateway.emitAdminStatsChanged();
     return { success: true, message: 'Request cancelled successfully.' };
   }
 }

@@ -1,7 +1,12 @@
 import { apiClient } from '@/lib/api-client';
 
 export type Region = { id: string; name: string };
+export type Town = { id: string; name: string };
 export type QuarterResult = { id: string; name: string; town: { id: string; name: string } };
+
+export function listTowns(): Promise<Town[]> {
+  return apiClient.get<Town[]>('/locations/towns');
+}
 
 export function listRegions(): Promise<Region[]> {
   return apiClient.get<Region[]>('/locations/regions');

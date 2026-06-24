@@ -17,6 +17,7 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly errors?: string[],
+    public readonly data?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -37,7 +38,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
 
-  if (res.status === 401) {
+  const body = (await res.json()) as {
+    success?: boolean;
+    data?: T;
+    message?: string | string[];
+    error?: string;
+  };
+
+  if (res.status === 401 && !path.startsWith('/auth/')) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('deligo-auth');
       const next = encodeURIComponent(window.location.pathname);
@@ -45,13 +53,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(401, 'Unauthorized');
   }
-
-  const body = (await res.json()) as {
-    success?: boolean;
-    data?: T;
-    message?: string | string[];
-    error?: string;
-  };
 
   if (!res.ok) {
     const raw = body.message;
@@ -72,7 +73,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         message = 'Something went wrong';
       }
     }
-    throw new ApiError(res.status, message, errors);
+    throw new ApiError(res.status, message, errors, body);
   }
 
   return body.data as T;

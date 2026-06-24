@@ -14,14 +14,13 @@ import {
   getRouteMatchingJobs,
 } from '@/features/provider-portal/provider-portal-api';
 import type { RiderRoute, RouteMatchingJobs } from '@/features/provider-profile/profile-types';
-import { apiClient } from '@/lib/api-client';
+import { listRegions, listQuartersByRegion } from '@/features/request/location-api';
+import type { Region, QuarterResult } from '@/features/request/location-api';
 
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 const DAY_LABELS: Record<string, string> = {
   mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun',
 };
-
-type Quarter = { id: string; name: string; townName: string };
 
 export default function RiderRoutesPage() {
   const [routesList, setRoutesList] = useState<RiderRoute[]>([]);
@@ -38,14 +37,12 @@ export default function RiderRoutesPage() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
 
-  // Quarter picker
-  const [quarters, setQuarters] = useState<Quarter[]>([]);
+  // Region → quarter picker (shared region for both sides)
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(false);
+  const [selectedRegionId, setSelectedRegionId] = useState('');
+  const [allQuarters, setAllQuarters] = useState<QuarterResult[]>([]);
   const [quartersLoading, setQuartersLoading] = useState(false);
-  const [townOptions, setTownOptions] = useState<{ id: string; name: string; regionName: string }[]>([]);
-  const [originTownId, setOriginTownId] = useState('');
-  const [destinationTownId, setDestinationTownId] = useState('');
-  const [originQuarters, setOriginQuarters] = useState<Quarter[]>([]);
-  const [destinationQuarters, setDestinationQuarters] = useState<Quarter[]>([]);
 
   // Matching jobs
   const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
@@ -66,35 +63,25 @@ export default function RiderRoutesPage() {
     }
   }
 
-  // Prefetch regions → towns once when form opens
+  // Fetch regions once when the form opens
   useEffect(() => {
-    if (!showForm || townOptions.length > 0) return;
-    void (async () => {
-      try {
-        const regions = await apiClient.get<{ id: string; name: string }[]>('/locations/regions');
-        const allTowns: { id: string; name: string; regionName: string }[] = [];
-        await Promise.all(
-          regions.map(async (r) => {
-            const towns = await apiClient.get<{ id: string; name: string }[]>(`/locations/towns?regionId=${r.id}`);
-            towns.forEach((t) => allTowns.push({ id: t.id, name: t.name, regionName: r.name }));
-          }),
-        );
-        allTowns.sort((a, b) => a.name.localeCompare(b.name));
-        setTownOptions(allTowns);
-      } catch {
-        // ignore
-      }
-    })();
-  }, [showForm, townOptions.length]);
+    if (!showForm || regions.length > 0) return;
+    setRegionsLoading(true);
+    listRegions()
+      .then(setRegions)
+      .catch(() => {})
+      .finally(() => setRegionsLoading(false));
+  }, [showForm, regions.length]);
 
-  async function loadQuarters(townId: string, target: 'origin' | 'destination') {
-    if (!townId) return;
+  async function handleRegionChange(regionId: string) {
+    setSelectedRegionId(regionId);
+    setOriginQuarterId('');
+    setDestinationQuarterId('');
+    setAllQuarters([]);
+    if (!regionId) return;
     setQuartersLoading(true);
     try {
-      const qs = await apiClient.get<{ id: string; name: string }[]>(`/locations/quarters?townId=${townId}`);
-      const mapped = qs.map((q) => ({ id: q.id, name: q.name, townName: townOptions.find((t) => t.id === townId)?.name ?? '' }));
-      if (target === 'origin') setOriginQuarters(mapped);
-      else setDestinationQuarters(mapped);
+      setAllQuarters(await listQuartersByRegion(regionId));
     } finally {
       setQuartersLoading(false);
     }
@@ -131,10 +118,8 @@ export default function RiderRoutesPage() {
     setDepartureTime('');
     setIsRecurring(false);
     setSelectedDays([]);
-    setOriginTownId('');
-    setDestinationTownId('');
-    setOriginQuarters([]);
-    setDestinationQuarters([]);
+    setSelectedRegionId('');
+    setAllQuarters([]);
     setFormError(null);
   }
 
@@ -206,65 +191,73 @@ export default function RiderRoutesPage() {
                 </div>
               )}
 
-              {/* Origin */}
+              {/* Shared region */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Starting town</label>
-                <select
-                  value={originTownId}
-                  onChange={(e) => { setOriginTownId(e.target.value); setOriginQuarterId(''); void loadQuarters(e.target.value, 'origin'); }}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">Select town…</option>
-                  {townOptions.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.regionName})</option>
-                  ))}
-                </select>
-
-                {originTownId && (
-                  <>
-                    <label className="text-sm font-medium text-foreground">Starting quarter <span className="text-muted-foreground">(your exact area)</span></label>
-                    <select
-                      value={originQuarterId}
-                      onChange={(e) => setOriginQuarterId(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      disabled={quartersLoading}
-                    >
-                      <option value="">Select quarter…</option>
-                      {originQuarters.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-                    </select>
-                  </>
+                <label className="text-sm font-medium text-foreground">Region</label>
+                {regionsLoading ? (
+                  <div className="h-10 animate-pulse rounded-lg bg-muted" />
+                ) : (
+                  <select
+                    value={selectedRegionId}
+                    onChange={(e) => void handleRegionChange(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select region…</option>
+                    {regions.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedRegionId && (
+                  <p className="text-xs text-muted-foreground">
+                    Both your starting and destination quarter must be within this region.
+                  </p>
                 )}
               </div>
 
-              {/* Destination */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Destination town</label>
-                <select
-                  value={destinationTownId}
-                  onChange={(e) => { setDestinationTownId(e.target.value); setDestinationQuarterId(''); void loadQuarters(e.target.value, 'destination'); }}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">Select town…</option>
-                  {townOptions.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.regionName})</option>
-                  ))}
-                </select>
+              {/* Origin quarter */}
+              {selectedRegionId && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-foreground">Starting quarter</label>
+                  <select
+                    value={originQuarterId}
+                    onChange={(e) => setOriginQuarterId(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={quartersLoading}
+                  >
+                    <option value="">
+                      {quartersLoading ? 'Loading quarters…' : 'Select starting quarter…'}
+                    </option>
+                    {allQuarters
+                      .filter((q) => q.id !== destinationQuarterId)
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>{q.name} — {q.town.name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
-                {destinationTownId && (
-                  <>
-                    <label className="text-sm font-medium text-foreground">Destination quarter</label>
-                    <select
-                      value={destinationQuarterId}
-                      onChange={(e) => setDestinationQuarterId(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      disabled={quartersLoading}
-                    >
-                      <option value="">Select quarter…</option>
-                      {destinationQuarters.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-                    </select>
-                  </>
-                )}
-              </div>
+              {/* Destination quarter */}
+              {selectedRegionId && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-foreground">Destination quarter</label>
+                  <select
+                    value={destinationQuarterId}
+                    onChange={(e) => setDestinationQuarterId(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={quartersLoading}
+                  >
+                    <option value="">
+                      {quartersLoading ? 'Loading quarters…' : 'Select destination quarter…'}
+                    </option>
+                    {allQuarters
+                      .filter((q) => q.id !== originQuarterId)
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>{q.name} — {q.town.name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               {/* Time */}
               <div className="space-y-1">

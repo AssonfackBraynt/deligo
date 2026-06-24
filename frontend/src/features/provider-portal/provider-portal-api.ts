@@ -14,6 +14,12 @@ import type {
   RouteMatchingJobs,
 } from '@/features/provider-profile/profile-types';
 
+// ── Badge counts ──────────────────────────────────────────────────────────────
+
+export function getBadgeCounts(): Promise<{ marketplaceCount: number; directCount: number }> {
+  return apiClient.get('/delivery-requests/provider/badge-counts');
+}
+
 // ── Provider profile ──────────────────────────────────────────────────────────
 
 export function getMyProfile(): Promise<ProviderProfilePrivate> {

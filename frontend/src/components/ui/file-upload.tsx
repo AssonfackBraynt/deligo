@@ -20,6 +20,8 @@ interface FileUploadProps {
   onUploaded: (result: UploadedFileResult) => void;
   existingFileId?: string | null;
   disabled?: boolean;
+  /** Override the upload endpoint. Defaults to /files/upload (authenticated). */
+  endpoint?: string;
 }
 
 export function FileUpload({
@@ -29,6 +31,7 @@ export function FileUpload({
   onUploaded,
   existingFileId,
   disabled,
+  endpoint = '/files/upload',
 }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -43,7 +46,7 @@ export function FileUpload({
       const fd = new FormData();
       fd.append('file', file);
       fd.append('documentPurpose', documentPurpose);
-      const result = await apiClient.upload<UploadedFileResult>('/files/upload', fd);
+      const result = await apiClient.upload<UploadedFileResult>(endpoint, fd);
       setUploaded(true);
       setFilename(result.originalFilename ?? file.name);
       onUploaded(result);

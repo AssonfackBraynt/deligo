@@ -73,8 +73,18 @@ export class AuthService {
       throw this.invalidCredentials();
     }
 
+    if (user.accountStatus === AccountStatus.Suspended) {
+      throw new UnauthorizedException({
+        success: false,
+        error: {
+          code: ErrorCode.Forbidden,
+          message: 'Your account has been suspended.',
+          suspensionReason: user.suspensionReason ?? null,
+        },
+      });
+    }
+
     if (
-      user.accountStatus === AccountStatus.Suspended ||
       user.accountStatus === AccountStatus.Deactivated ||
       user.accountStatus === AccountStatus.Rejected
     ) {

@@ -8,7 +8,7 @@ import { Container } from '@/components/layout/container';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { routes } from '@/lib/routes';
-import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
 import type { RequestDraft } from '@/features/request/request-types';
 
 const RECEPTIONIST_NUMBER = '237694374748';
@@ -66,7 +66,7 @@ function buildWhatsAppMessage(draft: RequestDraft | undefined, trackingCode: str
 
 export default function RequestSuccessPage() {
   const { draftId } = useParams<{ draftId: string }>();
-  const draft = useRequestStore((s) => s.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const trackingCode = draft?.publicTrackingCode ?? '';
   const [copied, setCopied] = useState(false);
 

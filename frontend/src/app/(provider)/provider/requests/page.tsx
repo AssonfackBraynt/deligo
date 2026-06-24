@@ -20,6 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { SecureImage } from '@/components/ui/file-upload';
 import { routes } from '@/lib/routes';
 import {
   abandonDelivery,
@@ -33,6 +34,7 @@ import {
 } from '@/features/provider-portal/provider-portal-api';
 import type { ProviderAssignedRequest, ProviderOffer } from '@/features/provider-portal/provider-portal-types';
 import { ApiError } from '@/lib/api-client';
+import { useProviderBadgeStore } from '@/features/provider-portal/provider-badge-store';
 
 const STATUS_LABELS: Record<string, string> = {
   created: 'Pending',
@@ -93,7 +95,11 @@ export default function MyRequestsPage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  const clearDirect = useProviderBadgeStore((s) => s.clearDirect);
+  useEffect(() => {
+    clearDirect();
+    void load();
+  }, [clearDirect]);
 
   async function handleWorkflow(requestId: string, action: WorkflowAction) {
     setWorkflowLoading(requestId);
@@ -400,9 +406,18 @@ function RequestCard({
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-sm">
-          <Package size={15} className="shrink-0 text-muted-foreground" />
-          <span className="text-foreground">{request.items.map((i: { itemName: string }) => i.itemName).join(', ')}</span>
+        <div className="flex items-start gap-3">
+          {request.items[0]?.photoFileId && (
+            <SecureImage
+              fileId={request.items[0].photoFileId}
+              alt="Item photo"
+              className="size-14 shrink-0 rounded-lg object-cover border border-border"
+            />
+          )}
+          <div className="flex items-center gap-2 text-sm">
+            <Package size={15} className="shrink-0 text-muted-foreground" />
+            <span className="text-foreground">{request.items.map((i: { itemName: string }) => i.itemName).join(', ')}</span>
+          </div>
         </div>
 
         {request.route && (

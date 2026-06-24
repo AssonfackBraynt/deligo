@@ -16,7 +16,9 @@ export type MarketplacePost = {
     hasFragile: boolean;
     categories: string[];
     summary: string;
+    photoFileId: string | null;
   };
+  _hasBid?: boolean;
 };
 
 export type ProviderStats = {
@@ -51,6 +53,7 @@ export type ProviderAssignedRequest = {
     category: string | null;
     quantity: number;
     isFragile: boolean;
+    photoFileId: string | null;
   }>;
 };
 

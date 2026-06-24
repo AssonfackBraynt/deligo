@@ -1,18 +1,24 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Pill } from 'lucide-react';
+import { ImagePlus, Pill, X } from 'lucide-react';
 import { RequestFlowLayout } from '@/components/layout/request-flow-layout';
-import { FileUploadHint } from '@/components/ui/file-upload';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { routes } from '@/lib/routes';
 import { RequestActions } from '@/features/request/components/request-actions';
 import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
+import { setPendingPhoto, getPendingPhotoUrl, clearPendingPhoto } from '@/features/request/pending-item-photo';
 
 export default function ItemInformationPage() {
   const { draftId } = useParams<{ draftId: string }>();
-  const draft = useRequestStore((state) => state.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const updateDraft = useRequestStore((state) => state.updateDraft);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    () => getPendingPhotoUrl(draftId) ?? null,
+  );
 
   const isMedication = draft?.deliveryType === 'medication_delivery';
   const canContinue = isMedication
@@ -124,7 +130,54 @@ export default function ItemInformationPage() {
                 <option value="oversized">Oversized (&gt;120 cm)</option>
               </Select>
             </Field>
-            <FileUploadHint />
+            {/* Item photo — stored locally until form is submitted */}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">Item Photo <span className="font-normal text-muted-foreground">(optional)</span></p>
+              {previewUrl ? (
+                <div className="relative w-fit">
+                  <img
+                    src={previewUrl}
+                    alt="Item preview"
+                    className="h-40 w-40 rounded-xl border border-border object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearPendingPhoto(draftId);
+                      setPreviewUrl(null);
+                      updateDraft(draftId, { itemImageFileId: undefined });
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="absolute -right-2 -top-2 flex size-6 items-center justify-center rounded-full bg-danger text-white shadow"
+                    aria-label="Remove photo"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/40 text-muted-foreground transition hover:border-primary/50 hover:bg-muted/70"
+                >
+                  <ImagePlus size={28} />
+                  <span className="text-xs">Add photo</span>
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const url = setPendingPhoto(draftId, file);
+                  setPreviewUrl(url);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">JPEG, PNG or WebP · max 10 MB · helps provider identify the item</p>
+            </div>
             <label className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface px-4">
               <span className="font-semibold text-foreground">Fragile Item</span>
               <input

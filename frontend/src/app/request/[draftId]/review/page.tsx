@@ -9,15 +9,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { routes } from '@/lib/routes';
 import { ApiError } from '@/lib/api-client';
+import { apiClient } from '@/lib/api-client';
 import { createDeliveryRequest } from '@/features/request/delivery-request-api';
 import { saveRecentRequest } from '@/features/request/recent-requests-store';
 import { deliveryTypes } from '@/features/request/request-data';
 import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
+import { getPendingPhotoFile, clearPendingPhoto } from '@/features/request/pending-item-photo';
 
 export default function RequestReviewPage() {
   const { draftId } = useParams<{ draftId: string }>();
   const router = useRouter();
-  const draft = useRequestStore((s) => s.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const updateDraft = useRequestStore((s) => s.updateDraft);
 
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +45,17 @@ export default function RequestReviewPage() {
     setSubmitting(true);
     setServerError(null);
     try {
+      // Upload pending item photo (selected on /item page) before creating the request
+      let photoFileId = draft.itemImageFileId;
+      const pendingFile = getPendingPhotoFile(draftId);
+      if (pendingFile) {
+        const fd = new FormData();
+        fd.append('file', pendingFile);
+        const uploadResp = await apiClient.upload<{ id: string }>('/files/item-photo', fd);
+        photoFileId = uploadResp.id;
+        clearPendingPhoto(draftId);
+      }
+
       const result = await createDeliveryRequest({
         customerContactId: draft.customerContactId,
         fulfillmentMode: draft.providerMode ?? 'open_marketplace',
@@ -71,6 +85,7 @@ export default function RequestReviewPage() {
             sizeLabel: draft.sizeLabel || undefined,
             isFragile: draft.isFragile ?? false,
             specialInstructions: draft.specialInstructions || undefined,
+            photoFileId: photoFileId || undefined,
           },
         ],
       });

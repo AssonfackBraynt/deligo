@@ -125,6 +125,13 @@ export class ProviderProfileService {
       ...(query.baseCity && {
         baseCity: { contains: query.baseCity, mode: Prisma.QueryMode.insensitive },
       }),
+      ...(query.search && {
+        OR: [
+          { displayName: { contains: query.search, mode: Prisma.QueryMode.insensitive } },
+          { baseCity: { contains: query.search, mode: Prisma.QueryMode.insensitive } },
+          { businessAddress: { contains: query.search, mode: Prisma.QueryMode.insensitive } },
+        ],
+      }),
       ...(query.verificationStatus && { verificationStatus: query.verificationStatus }),
       ...(query.availabilityStatus && { availabilityStatus: query.availabilityStatus }),
       ...(query.isFeatured !== undefined && { isFeatured: query.isFeatured }),

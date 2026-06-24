@@ -128,6 +128,14 @@ export class DeliveryRequestController {
     return ok(await this.service.listMarketplace(user.id));
   }
 
+  @Get('provider/badge-counts')
+  @ApiBearerAuth()
+  @Roles(RoleCode.Provider)
+  @ApiOperation({ summary: 'Unread counts for marketplace and direct-request nav badges.' })
+  async getBadgeCounts(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.service.getBadgeCounts(user.id));
+  }
+
   @Get('provider/direct-requests')
   @ApiBearerAuth()
   @Roles(RoleCode.Provider)

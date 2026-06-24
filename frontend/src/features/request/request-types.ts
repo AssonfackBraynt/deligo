@@ -48,6 +48,7 @@ export type RequestDraft = {
   quantity?: number;
   isFragile?: boolean;
   specialInstructions?: string;
+  itemImageFileId?: string;
 
   providerMode?: ProviderSelectionMode;
   desiredRewardAmount?: number;

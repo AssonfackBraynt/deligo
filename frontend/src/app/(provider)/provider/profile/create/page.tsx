@@ -8,11 +8,13 @@ import { z } from 'zod';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { routes } from '@/lib/routes';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Textarea } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Container } from '@/components/layout/container';
 import { PublicHeader } from '@/components/layout/public-header';
 import { ProviderTypeSelector } from '@/features/provider-profile/provider-type-selector';
+import { listTowns } from '@/features/request/location-api';
+import type { Town } from '@/features/request/location-api';
 import type { ProviderProfilePrivate } from '@/features/provider-profile/profile-types';
 
 // ─── Validation schema ────────────────────────────────────────────────────────
@@ -91,6 +93,7 @@ export default function CreateProviderProfilePage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [towns, setTowns] = useState<Town[]>([]);
 
   const {
     register,
@@ -105,8 +108,10 @@ export default function CreateProviderProfilePage() {
   const isCompany =
     providerType === 'courier_company' || providerType === 'logistics_company';
 
-  // On mount: if provider already has a profile, send them to /me
+  // On mount: check if profile exists; also load towns in parallel
   useEffect(() => {
+    listTowns().then(setTowns).catch(() => null);
+
     apiClient
       .get<ProviderProfilePrivate>('/provider-profiles/me')
       .then(() => {
@@ -114,9 +119,9 @@ export default function CreateProviderProfilePage() {
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
-          setChecking(false); // no profile yet — show the form
+          setChecking(false);
         } else {
-          setChecking(false); // any other error — let them try to create
+          setChecking(false);
         }
       });
   }, [router]);
@@ -240,11 +245,12 @@ export default function CreateProviderProfilePage() {
                         error={errors.baseCity?.message}
                         hint="The primary city you operate in"
                       >
-                        <Input
-                          {...register('baseCity')}
-                          placeholder="e.g. Douala"
-                          disabled={isSubmitting}
-                        />
+                        <Select {...register('baseCity')} disabled={isSubmitting}>
+                          <option value="">Select a city</option>
+                          {towns.map((t) => (
+                            <option key={t.id} value={t.name}>{t.name}</option>
+                          ))}
+                        </Select>
                       </Field>
 
                       <Field

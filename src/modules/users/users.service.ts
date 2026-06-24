@@ -10,6 +10,7 @@ export type UserWithRoles = {
   email: string | null;
   passwordHash: string | null;
   accountStatus: AccountStatus;
+  suspensionReason: string | null;
   roles: RoleCode[];
   agencyIds: string[];
 };
@@ -40,6 +41,7 @@ export class UsersService {
       email: user.email,
       passwordHash: user.passwordHash,
       accountStatus: user.accountStatus as AccountStatus,
+      suspensionReason: (user as any).suspensionReason ?? null,
       roles: user.roles.map((userRole) => userRole.role.code as RoleCode),
       agencyIds: user.roles
         .map((userRole) => userRole.agencyId)
@@ -69,6 +71,7 @@ export class UsersService {
       email: user.email,
       passwordHash: user.passwordHash,
       accountStatus: user.accountStatus as AccountStatus,
+      suspensionReason: (user as any).suspensionReason ?? null,
       roles: user.roles.map((userRole) => userRole.role.code as RoleCode),
       agencyIds: user.roles
         .map((userRole) => userRole.agencyId)
@@ -98,6 +101,7 @@ export class UsersService {
       email: user.email,
       passwordHash: user.passwordHash,
       accountStatus: user.accountStatus as AccountStatus,
+      suspensionReason: (user as any).suspensionReason ?? null,
       roles: user.roles.map((userRole) => userRole.role.code as RoleCode),
       agencyIds: user.roles
         .map((userRole) => userRole.agencyId)
@@ -143,6 +147,7 @@ export class UsersService {
       email: user.email,
       passwordHash: user.passwordHash,
       accountStatus: user.accountStatus as AccountStatus,
+      suspensionReason: null,
       roles: user.roles.map((userRole) => userRole.role.code as RoleCode),
       agencyIds: [],
     };

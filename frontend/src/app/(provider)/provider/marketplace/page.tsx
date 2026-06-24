@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
+import { SecureImage } from '@/components/ui/file-upload';
 import { Field, Input, Textarea } from '@/components/ui/field';
 import { routes } from '@/lib/routes';
 import { ApiError } from '@/lib/api-client';
@@ -25,6 +26,9 @@ import {
   bidOnRequest,
 } from '@/features/provider-portal/provider-portal-api';
 import type { MarketplacePost } from '@/features/provider-portal/provider-portal-types';
+import { useAuthStore } from '@/features/auth/auth-store';
+import { useMarketplaceSocket } from '@/hooks/use-marketplace-socket';
+import { useProviderBadgeStore } from '@/features/provider-portal/provider-badge-store';
 
 const DELIVERY_TYPE_LABELS: Record<string, string> = {
   document_delivery: 'Documents',
@@ -41,6 +45,8 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const clearMarketplace = useProviderBadgeStore((s) => s.clearMarketplace);
 
   // Bid modal state
   const [bidTarget, setBidTarget] = useState<MarketplacePost | null>(null);
@@ -67,7 +73,25 @@ export default function MarketplacePage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    clearMarketplace();
+    load();
+  }, [clearMarketplace]);
+
+  // WebSocket: new post pushed by server → prepend it
+  const handleNew = useCallback((post: MarketplacePost) => {
+    setPosts((prev) => {
+      if (prev.some((p) => p.id === post.id)) return prev;
+      return [post, ...prev];
+    });
+  }, []);
+
+  // WebSocket: post taken by another provider → remove it
+  const handleRemoved = useCallback((id: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  useMarketplaceSocket(accessToken, { onNew: handleNew, onRemoved: handleRemoved });
 
   async function handleTake(post: MarketplacePost) {
     setTakingId(post.id);
@@ -275,14 +299,23 @@ function MarketplaceCard({
         </div>
 
         {/* Items */}
-        <div className="flex items-start gap-2 text-sm">
-          <Package size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
-          <span className="text-foreground">
-            {post.items.summary}
-            <span className="ml-1 text-muted-foreground">
-              ({post.items.count} item{post.items.count !== 1 ? 's' : ''})
+        <div className="flex items-start gap-3">
+          {post.items.photoFileId && (
+            <SecureImage
+              fileId={post.items.photoFileId}
+              alt="Item photo"
+              className="size-16 shrink-0 rounded-lg object-cover border border-border"
+            />
+          )}
+          <div className="flex items-start gap-2 text-sm">
+            <Package size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+            <span className="text-foreground">
+              {post.items.summary}
+              <span className="ml-1 text-muted-foreground">
+                ({post.items.count} item{post.items.count !== 1 ? 's' : ''})
+              </span>
             </span>
-          </span>
+          </div>
         </div>
 
         {/* Route */}

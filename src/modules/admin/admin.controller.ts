@@ -7,6 +7,7 @@ import { RoleCode } from '@common/enums/role-code.enum';
 import { AuthenticatedUser } from '@common/types/authenticated-user.type';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { AdminService } from './admin.service';
+import { AdminReportQueryDto } from './dto/admin-report-query.dto';
 
 class ReviewVerificationDto {
   @IsEnum(['approved', 'rejected'])
@@ -24,6 +25,10 @@ class ReviewVerificationDto {
 class UpdateUserStatusDto {
   @IsEnum(['active', 'suspended', 'deactivated'])
   accountStatus: 'active' | 'suspended' | 'deactivated';
+
+  @IsOptional()
+  @IsString()
+  suspensionReason?: string;
 }
 
 @ApiTags('Admin')
@@ -127,7 +132,24 @@ export class AdminController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserStatusDto,
   ) {
-    return ok(await this.service.updateUserStatus(id, dto.accountStatus));
+    return ok(await this.service.updateUserStatus(id, dto.accountStatus, dto.suspensionReason));
+  }
+
+  // ── Chart data ────────────────────────────────────────────────────────────
+
+  @Get('chart-data')
+  @ApiOperation({ summary: '7-day trend + provider type and delivery status breakdowns for dashboard charts.' })
+  async getChartData() {
+    return ok(await this.service.getChartData());
+  }
+
+  // ── Reports ───────────────────────────────────────────────────────────────
+
+  @Get('reports')
+  @ApiOperation({ summary: 'Administrative report for a given time frame.' })
+  async getReport(@Query() query: AdminReportQueryDto) {
+    const { startDate, endDate } = query.resolveDateRange();
+    return ok(await this.service.getReport(startDate, endDate));
   }
 
   // ── Notifications ─────────────────────────────────────────────────────────

@@ -16,11 +16,12 @@ import { getRecommendedProviders } from '@/features/request/delivery-request-api
 import type { RecommendedProvider } from '@/features/request/delivery-request-api';
 import { providerModes } from '@/features/request/request-data';
 import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
 import type { ProviderSelectionMode } from '@/features/request/request-types';
 
 export default function ProviderSelectionPage() {
   const { draftId } = useParams<{ draftId: string }>();
-  const draft = useRequestStore((state) => state.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const updateDraft = useRequestStore((state) => state.updateDraft);
   const [mode, setMode] = useState<ProviderSelectionMode>(draft?.providerMode ?? 'open_marketplace');
 

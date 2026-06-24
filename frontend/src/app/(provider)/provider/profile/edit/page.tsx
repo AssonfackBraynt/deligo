@@ -10,7 +10,9 @@ import { ArrowLeft } from 'lucide-react';
 import { apiClient, ApiError } from '@/lib/api-client';
 import { routes } from '@/lib/routes';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Textarea } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
+import { listTowns } from '@/features/request/location-api';
+import type { Town } from '@/features/request/location-api';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Container } from '@/components/layout/container';
 import { PublicHeader } from '@/components/layout/public-header';
@@ -81,6 +83,7 @@ export default function EditProviderProfilePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [towns, setTowns] = useState<Town[]>([]);
 
   const {
     register,
@@ -90,6 +93,8 @@ export default function EditProviderProfilePage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   useEffect(() => {
+    listTowns().then(setTowns).catch(() => null);
+
     apiClient
       .get<ProviderProfilePrivate>('/provider-profiles/me')
       .then((profile) => {
@@ -231,11 +236,12 @@ export default function EditProviderProfilePage() {
                 {isRider && (
                   <>
                     <Field label="Base city" error={errors.baseCity?.message}>
-                      <Input
-                        {...register('baseCity')}
-                        placeholder="e.g. Douala"
-                        disabled={isSubmitting}
-                      />
+                      <Select {...register('baseCity')} disabled={isSubmitting}>
+                        <option value="">Select a city</option>
+                        {towns.map((t) => (
+                          <option key={t.id} value={t.name}>{t.name}</option>
+                        ))}
+                      </Select>
                     </Field>
 
                     <Field

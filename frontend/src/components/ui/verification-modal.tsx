@@ -138,10 +138,12 @@ export function VerificationModal({
 }) {
   // Independent rider fields
   const [nationalIdNumber, setNationalIdNumber] = useState('');
+  const [nationalIdError, setNationalIdError] = useState('');
   const [nationalIdFront, setNationalIdFront] = useState<StagedFile>(null);
   const [nationalIdBack, setNationalIdBack] = useState<StagedFile>(null);
   const [profilePhoto, setProfilePhoto] = useState<StagedFile>(null);
   const [niuNumber, setNiuNumber] = useState('');
+  const [niuError, setNiuError] = useState('');
   const [niuDoc, setNiuDoc] = useState<StagedFile>(null);
 
   // Company fields
@@ -157,6 +159,32 @@ export function VerificationModal({
 
   const isRider = providerType === 'independent_rider';
   const isLogistics = providerType === 'logistics_company';
+
+  function validateNationalId(value: string): boolean {
+    return /^20\d{15}$/.test(value);
+  }
+
+  function validateNiu(value: string): boolean {
+    return /^[A-Za-z0-9]{13}$/.test(value);
+  }
+
+  function handleNationalIdChange(value: string) {
+    setNationalIdNumber(value);
+    if (value && !validateNationalId(value)) {
+      setNationalIdError('Incorrect format');
+    } else {
+      setNationalIdError('');
+    }
+  }
+
+  function handleNiuChange(value: string) {
+    setNiuNumber(value);
+    if (value && !validateNiu(value)) {
+      setNiuError('Incorrect format');
+    } else {
+      setNiuError('');
+    }
+  }
 
   async function uploadAndRecord(
     file: StagedFile,
@@ -180,6 +208,16 @@ export function VerificationModal({
       if (isRider) {
         if (!nationalIdNumber.trim() || !nationalIdFront || !nationalIdBack || !profilePhoto || !niuNumber.trim() || !niuDoc) {
           setError('All fields are required for Independent Rider verification.');
+          return;
+        }
+        if (!validateNationalId(nationalIdNumber.trim())) {
+          setNationalIdError('Incorrect format');
+          setError('Please fix the errors above before submitting.');
+          return;
+        }
+        if (!validateNiu(niuNumber.trim())) {
+          setNiuError('Incorrect format');
+          setError('Please fix the errors above before submitting.');
           return;
         }
         setStep('Uploading National ID (front)…');
@@ -229,7 +267,7 @@ export function VerificationModal({
 
   if (!isOpen) return null;
 
-  const canSubmitRider = nationalIdNumber.trim().length > 0 && !!nationalIdFront && !!nationalIdBack && !!profilePhoto && niuNumber.trim().length > 0 && !!niuDoc;
+  const canSubmitRider = validateNationalId(nationalIdNumber.trim()) && !!nationalIdFront && !!nationalIdBack && !!profilePhoto && validateNiu(niuNumber.trim()) && !!niuDoc;
   const canSubmitCompany = !!managerNationalId && !!businessReg && !!taxDoc;
   const canSubmit = isRider ? canSubmitRider : canSubmitCompany;
 
@@ -270,12 +308,17 @@ export function VerificationModal({
                 <input
                   type="text"
                   value={nationalIdNumber}
-                  onChange={(e) => setNationalIdNumber(e.target.value)}
-                  placeholder="e.g. 123456789"
+                  onChange={(e) => handleNationalIdChange(e.target.value)}
+                  placeholder="e.g. 20XXXXXXXXXXXXXXX (17 digits)"
+                  maxLength={17}
                   disabled={submitting}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+                  className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 ${nationalIdError ? 'border-danger' : 'border-border'}`}
                 />
-                <p className="text-xs text-muted-foreground">The number printed on your national identity card</p>
+                {nationalIdError ? (
+                  <p className="text-xs text-danger">{nationalIdError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">17-digit number starting with 20</p>
+                )}
               </div>
 
               <StagedFilePicker
@@ -309,12 +352,15 @@ export function VerificationModal({
                 <input
                   type="text"
                   value={niuNumber}
-                  onChange={(e) => setNiuNumber(e.target.value)}
-                  placeholder="e.g. M123456789A"
+                  onChange={(e) => handleNiuChange(e.target.value)}
+                  placeholder="13-character alphanumeric"
+                  maxLength={13}
                   disabled={submitting}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+                  className={`w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 ${niuError ? 'border-danger' : 'border-border'}`}
                 />
-                <p className="text-xs text-muted-foreground">Numéro d'Identification Unique (NIU)</p>
+                {niuError && (
+                  <p className="text-xs text-danger">{niuError}</p>
+                )}
               </div>
               <StagedFilePicker
                 label="NIU Certificate (PDF or photo)"

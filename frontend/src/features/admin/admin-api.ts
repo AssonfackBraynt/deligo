@@ -1,5 +1,41 @@
 import { apiClient } from '@/lib/api-client';
 
+// ── Report types ───────────────────────────────────────────────────────────────
+
+export type ReportPreset = 'day' | '7d' | '15d' | '30d' | '6m' | '1y' | 'custom';
+
+export type AdminReport = {
+  period: { from: string; to: string; days: number };
+  deliveries: { new: number; completed: number; active: number; cancelled: number; disputed: number };
+  users: { newRegistrations: number };
+  providers: { newRegistrations: number; verifiedInPeriod: number };
+  verifications: { submitted: number; approved: number; rejected: number };
+  reviews: { count: number; averageRating: number | null };
+};
+
+// ── Chart data ─────────────────────────────────────────────────────────────────
+
+export type AdminChartData = {
+  trend: Array<{ day: string; deliveries: number; users: number }>;
+  providerBreakdown: Array<{ name: string; value: number }>;
+  statusBreakdown: Array<{ name: string; value: number }>;
+};
+
+export async function getAdminChartData(): Promise<AdminChartData> {
+  return apiClient.get<AdminChartData>('/admin/chart-data');
+}
+
+export async function getAdminReport(
+  preset: ReportPreset,
+  opts?: { date?: string; from?: string; to?: string },
+): Promise<AdminReport> {
+  const params = new URLSearchParams({ preset });
+  if (opts?.date) params.set('date', opts.date);
+  if (opts?.from) params.set('from', opts.from);
+  if (opts?.to) params.set('to', opts.to);
+  return apiClient.get<AdminReport>(`/admin/reports?${params.toString()}`);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type AdminStats = {
@@ -144,6 +180,20 @@ export function listAdminUsers(params?: {
 export function updateUserStatus(
   userId: string,
   status: 'active' | 'suspended' | 'deactivated',
+  suspensionReason?: string,
 ): Promise<{ success: boolean }> {
-  return apiClient.patch(`/admin/users/${userId}/status`, { status });
+  return apiClient.patch(`/admin/users/${userId}/status`, { accountStatus: status, suspensionReason });
+}
+
+export function suspendProviderUser(
+  userId: string,
+  reason: string,
+): Promise<{ success: boolean }> {
+  return updateUserStatus(userId, 'suspended', reason);
+}
+
+export function unsuspendProviderUser(
+  userId: string,
+): Promise<{ success: boolean }> {
+  return updateUserStatus(userId, 'active');
 }

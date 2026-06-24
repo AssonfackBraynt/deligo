@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -64,4 +65,9 @@ export class ItemDto {
   @IsString()
   @MaxLength(500)
   specialInstructions?: string;
+
+  @ApiPropertyOptional({ description: 'UUID of an uploaded photo file for this item.' })
+  @IsOptional()
+  @IsUUID()
+  photoFileId?: string;
 }

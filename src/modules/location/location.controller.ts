@@ -9,11 +9,27 @@ import { LocationService } from './location.service';
 export class LocationController {
   constructor(private readonly locationService: LocationService) {}
 
+  @Get('public-stats')
+  @Public()
+  @ApiOperation({ summary: 'Public homepage stats: completed deliveries, verified providers, total quarters' })
+  async getPublicStats() {
+    const data = await this.locationService.getPublicStats();
+    return ok(data);
+  }
+
   @Get('regions')
   @Public()
   @ApiOperation({ summary: 'List all regions' })
   async listRegions() {
     const data = await this.locationService.listRegions();
+    return ok(data);
+  }
+
+  @Get('towns')
+  @Public()
+  @ApiOperation({ summary: 'List all towns' })
+  async listTowns() {
+    const data = await this.locationService.listTowns();
     return ok(data);
   }
 

@@ -32,5 +32,6 @@ export const routes = {
     requests: '/admin/requests',
     users: '/admin/users',
     notifications: '/admin/notifications',
+    reports: '/admin/reports',
   },
 };

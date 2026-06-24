@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
+  ArrowLeft,
   Bike,
   Building2,
   Edit,
@@ -251,6 +252,16 @@ export default function MyProfilePage() {
       <PublicHeader />
       <main className="py-6 sm:py-10">
         <Container className="max-w-2xl space-y-5">
+          {/* Back button */}
+          <div>
+            <Link
+              href={routes.provider.dashboard}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft size={16} />
+              Back to Dashboard
+            </Link>
+          </div>
           {/* Header card */}
           <Card>
             <CardContent>

@@ -51,6 +51,7 @@ export type DeliveryRequestItem = {
   sizeLabel: string | null;
   isFragile: boolean;
   specialInstructions: string | null;
+  photoFileId: string | null;
 };
 
 export type DeliveryRequestPrivate = Omit<DeliveryRequestPublic, 'route'> & {
@@ -93,6 +94,7 @@ export type CreateDeliveryRequestInput = {
     sizeLabel?: string;
     isFragile?: boolean;
     specialInstructions?: string;
+    photoFileId?: string;
   }>;
 };
 

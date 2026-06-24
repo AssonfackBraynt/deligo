@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { VerificationModal } from '@/components/ui/verification-modal';
 import {
   Activity,
   CheckCircle2,
@@ -45,6 +46,7 @@ export default function ProviderDashboardPage() {
   const [branchStats, setBranchStats] = useState<BranchStats[]>([]);
   const [toggling, setToggling] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [verifModalOpen, setVerifModalOpen] = useState(false);
 
   const isCompany =
     profile?.providerType === 'courier_company' ||
@@ -121,7 +123,7 @@ export default function ProviderDashboardPage() {
         </div>
 
         {/* Stats grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard
             icon={<Activity size={20} className="text-primary" />}
             label="Active Requests"
@@ -153,7 +155,7 @@ export default function ProviderDashboardPage() {
         </div>
 
         {/* Quick actions */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <QuickAction
             href={routes.provider.marketplace}
             icon={<ShoppingBag size={22} className="text-primary" />}
@@ -255,7 +257,7 @@ export default function ProviderDashboardPage() {
           </Card>
         )}
 
-        {/* Profile completeness hint */}
+        {/* Verification prompt */}
         {profile && profile.verificationStatus !== 'verified' && (
           <Card className="border-warning/40 bg-warning/5">
             <CardContent className="flex items-center justify-between gap-4 py-4">
@@ -265,13 +267,22 @@ export default function ProviderDashboardPage() {
                   Verified providers appear first and earn more trust from customers.
                 </p>
               </div>
-              <Button asChild size="sm" variant="outline">
-                <Link href={routes.provider.editProfile}>Update profile</Link>
+              <Button size="sm" variant="outline" onClick={() => setVerifModalOpen(true)}>
+                Submit Verification Document
               </Button>
             </CardContent>
           </Card>
         )}
       </main>
+
+      {profile && (
+        <VerificationModal
+          isOpen={verifModalOpen}
+          onClose={() => setVerifModalOpen(false)}
+          providerType={profile.providerType}
+          onSubmitted={() => setVerifModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -322,16 +333,16 @@ function QuickAction({
   return (
     <Link
       href={href}
-      className="flex items-center gap-4 rounded-xl border border-border bg-surface p-4 transition hover:border-primary/40 hover:bg-primary/5"
+      className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 transition hover:border-primary/40 hover:bg-primary/5 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
     >
-      <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:size-11">
         {icon}
       </div>
-      <div className="min-w-0">
-        <p className="font-semibold text-foreground">{title}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground sm:text-base">{title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
       </div>
-      <ChevronRight size={16} className="ml-auto shrink-0 text-muted-foreground" />
+      <ChevronRight size={16} className="hidden shrink-0 text-muted-foreground sm:block" />
     </Link>
   );
 }

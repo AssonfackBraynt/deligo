@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LogOut, PackageCheck, Search, UserRound } from 'lucide-react';
+import { LogOut, PackageCheck, UserRound } from 'lucide-react';
 import { routes } from '@/lib/routes';
 import { useAuthStore, selectIsAuthenticated } from '@/features/auth/auth-store';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,17 @@ export function PublicHeader() {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
+  const isProvider = useAuthStore((s) => s.user?.roles.includes('provider') ?? false);
   const hasHydrated = useAuthStore((s) => s._hasHydrated);
   const clearAuth = useAuthStore((s) => s.clearAuth);
+
+  function handleJobsClick() {
+    if (isAuthenticated && isProvider) {
+      router.push(routes.provider.marketplace);
+    } else {
+      router.push(routes.auth.login);
+    }
+  }
 
   function handleLogout() {
     clearAuth();
@@ -40,22 +49,20 @@ export function PublicHeader() {
             <Link href="/providers" className="text-muted-foreground hover:text-foreground">
               Providers
             </Link>
-            <Link href="/carrier/jobs" className="text-muted-foreground hover:text-foreground">
+            <button
+              type="button"
+              onClick={handleJobsClick}
+              className="text-muted-foreground hover:text-foreground"
+            >
               Jobs
-            </Link>
+            </button>
             <Link href="/track/demo" className="text-muted-foreground hover:text-foreground">
               Track
             </Link>
           </nav>
 
           <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="icon" aria-label="Search providers">
-              <Link href="/providers">
-                <Search size={19} aria-hidden="true" />
-              </Link>
-            </Button>
-
-            {/* Only render after hydration to avoid Login→Logout flash */}
+            {/* Only render after hydration to avoid flash */}
             {hasHydrated && (
               isAuthenticated ? (
                 <Button
@@ -67,12 +74,19 @@ export function PublicHeader() {
                   Logout
                 </Button>
               ) : (
-                <Button asChild variant="outline" className="hidden sm:inline-flex">
-                  <Link href={routes.auth.login}>
-                    <UserRound size={17} aria-hidden="true" />
-                    Login
-                  </Link>
-                </Button>
+                <>
+                  <Button asChild variant="outline" className="hidden sm:inline-flex">
+                    <Link href={routes.auth.login}>
+                      <UserRound size={17} aria-hidden="true" />
+                      Login
+                    </Link>
+                  </Button>
+                  <Button asChild className="hidden sm:inline-flex bg-success hover:bg-success/90 text-white border-0">
+                    <Link href={routes.auth.register}>
+                      Register
+                    </Link>
+                  </Button>
+                </>
               )
             )}
           </div>

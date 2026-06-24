@@ -24,6 +24,12 @@ export class ListProvidersQueryDto {
   @MaxLength(120)
   baseCity?: string;
 
+  @ApiPropertyOptional({ example: 'Express', description: 'Case-insensitive search across displayName and baseCity.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
   @ApiPropertyOptional({ enum: VerificationStatus })
   @IsOptional()
   @IsEnum(VerificationStatus)

@@ -10,12 +10,13 @@ import { Field, Input } from '@/components/ui/field';
 import { routes } from '@/lib/routes';
 import { RequestActions } from '@/features/request/components/request-actions';
 import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
 
 type PickerTarget = 'pickup' | 'destination' | null;
 
 export default function RouteInformationPage() {
   const { draftId } = useParams<{ draftId: string }>();
-  const draft = useRequestStore((state) => state.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const updateDraft = useRequestStore((state) => state.updateDraft);
   const [pickerOpen, setPickerOpen] = useState<PickerTarget>(null);
 

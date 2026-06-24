@@ -12,6 +12,22 @@ export class LocationService {
     });
   }
 
+  async getPublicStats() {
+    const [totalDeliveries, totalCarriers, totalQuarters] = await Promise.all([
+      this.prisma.deliveryRequest.count({ where: { deletedAt: null } }),
+      this.prisma.providerProfile.count({ where: { deletedAt: null } }),
+      this.prisma.quarter.count(),
+    ]);
+    return { totalDeliveries, totalCarriers, totalQuarters };
+  }
+
+  async listTowns() {
+    return this.prisma.town.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async listQuartersByRegion(regionId: string, search?: string) {
     return this.prisma.quarter.findMany({
       where: {

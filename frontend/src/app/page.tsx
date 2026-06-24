@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { QuickRequestWidget } from '@/features/request/components/quick-request-widget';
+import { FindJobsButton } from '@/components/layout/find-jobs-button';
 
 const categories = [
   { title: 'Agency Pickup', icon: Building2 },
@@ -16,14 +17,36 @@ const categories = [
   { title: 'Intercity Delivery', icon: Truck },
 ];
 
-const stats = [
-  ['Completed Deliveries', '1,240+'],
-  ['Verified Carriers', '380+'],
-  ['Verified Agencies', '72+'],
-  ['Cities Covered', '8'],
-];
+type PublicStats = {
+  totalDeliveries: number;
+  totalCarriers: number;
+  totalQuarters: number;
+};
 
-export default function HomePage() {
+async function fetchPublicStats(): Promise<PublicStats | null> {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}/locations/public-stats`,
+      { next: { revalidate: 300 } },
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.data ?? json;
+  } catch {
+    return null;
+  }
+}
+
+export default async function HomePage() {
+  const stats = await fetchPublicStats();
+
+  const statItems = [
+    { label: 'Total Deliveries', value: stats ? `${stats.totalDeliveries.toLocaleString()}+` : '—' },
+    { label: 'Number of Carriers', value: stats ? `${stats.totalCarriers.toLocaleString()}+` : '—' },
+    { label: 'Quarters Covered', value: stats ? stats.totalQuarters.toLocaleString() : '—' },
+    { label: 'Support Available', value: '24/7' },
+  ];
+
   return (
     <>
       <AuthRedirect />
@@ -47,9 +70,7 @@ export default function HomePage() {
                     <ArrowRight size={19} aria-hidden="true" />
                   </a>
                 </Button>
-                <Button asChild variant="outline" size="lg">
-                  <a href="/carrier/jobs">Find Delivery Jobs</a>
-                </Button>
+                <FindJobsButton />
               </div>
             </div>
             <QuickRequestWidget />
@@ -58,7 +79,7 @@ export default function HomePage() {
 
         <section className="border-y border-border bg-surface py-8 sm:py-10">
           <Container>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
               {categories.map((category) => {
                 const Icon = category.icon;
                 return (
@@ -76,8 +97,8 @@ export default function HomePage() {
 
         <section className="py-8 sm:py-10">
           <Container>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {stats.map(([label, value]) => (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {statItems.map(({ label, value }) => (
                 <div key={label} className="rounded-lg border border-border bg-surface p-5">
                   <p className="text-3xl font-semibold text-foreground">{value}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{label}</p>

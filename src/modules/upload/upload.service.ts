@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { CryptoService } from '@common/services/crypto.service';
-import { SupabaseService } from '@common/services/supabase.service';
 import * as crypto from 'crypto';
 import { randomUUID } from 'crypto';
 
@@ -24,7 +23,6 @@ const ALLOWED_MIME_TYPES = new Set([
 export class UploadService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly supabase: SupabaseService,
     private readonly crypto: CryptoService,
   ) {}
 
@@ -46,8 +44,6 @@ export class UploadService {
     }
 
     const fileId = randomUUID();
-    const ext = opts.originalFilename.split('.').pop() ?? 'bin';
-    const objectKey = `uploads/${opts.providerProfileId ?? opts.uploadedByUserId ?? 'anonymous'}/${fileId}.${ext}.enc`;
 
     const checksum = crypto
       .createHash('sha256')
@@ -56,17 +52,12 @@ export class UploadService {
 
     const { ciphertext, iv } = this.crypto.encrypt(opts.buffer);
 
-    const storageUrl = await this.supabase.upload(objectKey, ciphertext, 'application/octet-stream');
-
     const record = await this.prisma.uploadedFile.create({
       data: {
         id: fileId,
         uploadedByUserId: opts.uploadedByUserId ?? null,
         providerProfileId: opts.providerProfileId ?? null,
-        storageProvider: 'supabase',
-        bucketName: process.env.SUPABASE_BUCKET ?? 'deligo-documents',
-        objectKey,
-        storageUrl,
+        storageProvider: 'database',
         originalFilename: opts.originalFilename,
         mimeType: opts.mimeType,
         fileSizeBytes: BigInt(opts.buffer.length),
@@ -74,6 +65,7 @@ export class UploadService {
         checksum,
         isEncrypted: true,
         encryptionIv: iv,
+        encryptedData: new Uint8Array(ciphertext),
         documentPurpose: opts.documentPurpose ?? null,
       },
     });
@@ -85,15 +77,17 @@ export class UploadService {
     const file = await this.prisma.uploadedFile.findUnique({ where: { id: fileId } });
     if (!file || file.deletedAt) throw new NotFoundException('File not found');
 
-    const canAccess =
-      file.uploadedByUserId === requestingUserId ||
-      file.providerProfileId != null; // providers' docs accessible to owner & admin — controller enforces admin check
+    // Item photos uploaded anonymously (no uploadedByUserId) are accessible to any authenticated user
+    const isPublicItemPhoto = !file.uploadedByUserId && file.documentPurpose === 'item_photo';
+    const isOwner = file.uploadedByUserId === requestingUserId;
 
-    if (!canAccess && file.uploadedByUserId !== requestingUserId) {
+    if (!isPublicItemPhoto && !isOwner) {
       throw new ForbiddenException('Access denied');
     }
 
-    const encryptedBuffer = await this.supabase.download(file.objectKey);
+    if (!file.encryptedData) throw new NotFoundException('File content not found');
+
+    const encryptedBuffer = Buffer.from(file.encryptedData as Uint8Array);
 
     const plainBuffer = file.isEncrypted && file.encryptionIv
       ? this.crypto.decrypt(encryptedBuffer, file.encryptionIv)

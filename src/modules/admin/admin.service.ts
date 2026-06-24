@@ -2,10 +2,14 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import * as argon2 from 'argon2';
 import { PrismaService } from '@database/prisma.service';
 import { ErrorCode } from '@common/errors/error-codes';
+import { DeliGoGateway } from '../gateway/deligo.gateway';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: DeliGoGateway,
+  ) {}
 
   // ── Dashboard stats ───────────────────────────────────────────────────────
 
@@ -360,11 +364,18 @@ export class AdminService {
     };
   }
 
-  async updateUserStatus(userId: string, status: 'active' | 'suspended' | 'deactivated') {
+  async updateUserStatus(userId: string, status: 'active' | 'suspended' | 'deactivated', suspensionReason?: string) {
     const user = await this.prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { id: true } });
     if (!user) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'User not found.' } });
 
-    await this.prisma.user.update({ where: { id: userId }, data: { accountStatus: status as any } });
+    await (this.prisma.user.update as any)({
+      where: { id: userId },
+      data: {
+        accountStatus: status,
+        suspensionReason: status === 'suspended' ? (suspensionReason ?? null) : null,
+      },
+    });
+    this.gateway.emitAdminStatsChanged();
     return { success: true, message: `User status updated to ${status}.` };
   }
 
@@ -383,6 +394,155 @@ export class AdminService {
     ]);
 
     return { items, total, page, limit };
+  }
+
+  // ── Dashboard chart data ──────────────────────────────────────────────────
+
+  async getChartData() {
+    // Build last 7 day labels
+    const days: { label: string; start: Date; end: Date }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - i);
+      const label = d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
+      const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0));
+      const end   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+      days.push({ label, start, end });
+    }
+
+    const [deliveryRows, userRows, providerTypes, statusCounts] = await Promise.all([
+      // Deliveries per day (last 7 days)
+      Promise.all(
+        days.map((d) =>
+          this.prisma.deliveryRequest.count({
+            where: { createdAt: { gte: d.start, lte: d.end }, deletedAt: null },
+          }),
+        ),
+      ),
+      // New users per day (last 7 days)
+      Promise.all(
+        days.map((d) =>
+          this.prisma.user.count({
+            where: { createdAt: { gte: d.start, lte: d.end }, deletedAt: null },
+          }),
+        ),
+      ),
+      // Provider type breakdown
+      this.prisma.providerProfile.groupBy({
+        by: ['providerType'],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      // Delivery status distribution
+      this.prisma.deliveryRequest.groupBy({
+        by: ['requestStatus'],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const trend = days.map((d, i) => ({
+      day: d.label,
+      deliveries: deliveryRows[i],
+      users: userRows[i],
+    }));
+
+    const providerBreakdown = providerTypes.map((r) => ({
+      name: r.providerType.replace('_', ' '),
+      value: r._count._all,
+    }));
+
+    const STATUS_LABEL: Record<string, string> = {
+      created: 'Created',
+      offers_received: 'Offers',
+      provider_assigned: 'Assigned',
+      in_transit: 'In Transit',
+      delivered: 'Delivered',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+      disputed: 'Disputed',
+    };
+
+    const statusBreakdown = statusCounts
+      .filter((r) => r._count._all > 0)
+      .map((r) => ({
+        name: STATUS_LABEL[r.requestStatus as string] ?? r.requestStatus,
+        value: r._count._all,
+      }));
+
+    return { trend, providerBreakdown, statusBreakdown };
+  }
+
+  // ── Administrative report ─────────────────────────────────────────────────
+
+  async getReport(startDate: Date, endDate: Date) {
+    const range = { gte: startDate, lte: endDate };
+
+    const [
+      newDeliveries,
+      completedDeliveries,
+      cancelledDeliveries,
+      disputedDeliveries,
+      activeDeliveries,
+      newUsers,
+      newProviders,
+      verifiedProviders,
+      verificationSubmitted,
+      verificationApproved,
+      verificationRejected,
+      reviewsInPeriod,
+      reviewsAggregate,
+    ] = await Promise.all([
+      this.prisma.deliveryRequest.count({ where: { createdAt: range, deletedAt: null } }),
+      this.prisma.deliveryRequest.count({ where: { createdAt: range, requestStatus: { in: ['delivered', 'completed'] as any[] }, deletedAt: null } }),
+      this.prisma.deliveryRequest.count({ where: { createdAt: range, requestStatus: 'cancelled' as any, deletedAt: null } }),
+      this.prisma.deliveryRequest.count({ where: { createdAt: range, requestStatus: 'disputed' as any, deletedAt: null } }),
+      this.prisma.deliveryRequest.count({ where: { createdAt: range, requestStatus: { in: ['provider_assigned', 'in_transit'] as any[] }, deletedAt: null } }),
+      this.prisma.user.count({ where: { createdAt: range, deletedAt: null } }),
+      this.prisma.providerProfile.count({ where: { createdAt: range, deletedAt: null } }),
+      this.prisma.providerProfile.count({ where: { updatedAt: range, verificationStatus: 'verified', deletedAt: null } }),
+      this.prisma.verificationRecord.count({ where: { createdAt: range } }),
+      this.prisma.verificationRecord.count({ where: { reviewedAt: range, status: 'approved' } }),
+      this.prisma.verificationRecord.count({ where: { reviewedAt: range, status: 'rejected' } }),
+      this.prisma.reviewRating.count({ where: { createdAt: range, deletedAt: null } }),
+      this.prisma.reviewRating.aggregate({ where: { createdAt: range, deletedAt: null }, _avg: { rating: true } }),
+    ]);
+
+    const diffMs = endDate.getTime() - startDate.getTime();
+    const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+    return {
+      period: {
+        from: startDate.toISOString().slice(0, 10),
+        to: endDate.toISOString().slice(0, 10),
+        days,
+      },
+      deliveries: {
+        new: newDeliveries,
+        completed: completedDeliveries,
+        active: activeDeliveries,
+        cancelled: cancelledDeliveries,
+        disputed: disputedDeliveries,
+      },
+      users: {
+        newRegistrations: newUsers,
+      },
+      providers: {
+        newRegistrations: newProviders,
+        verifiedInPeriod: verifiedProviders,
+      },
+      verifications: {
+        submitted: verificationSubmitted,
+        approved: verificationApproved,
+        rejected: verificationRejected,
+      },
+      reviews: {
+        count: reviewsInPeriod,
+        averageRating: reviewsAggregate._avg.rating
+          ? Math.round(reviewsAggregate._avg.rating * 10) / 10
+          : null,
+      },
+    };
   }
 
   // ── One-time bootstrap ────────────────────────────────────────────────────

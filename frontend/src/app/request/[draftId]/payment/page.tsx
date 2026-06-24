@@ -8,11 +8,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/field';
 import { routes } from '@/lib/routes';
 import { useRequestStore } from '@/features/request/request-store';
+import { useRequestDraft } from '@/features/request/use-request-draft';
 
 export default function PaymentPage() {
   const { draftId } = useParams<{ draftId: string }>();
   const router = useRouter();
-  const draft = useRequestStore((state) => state.getDraft(draftId));
+  const draft = useRequestDraft(draftId);
   const amount = draft?.finalPrice ?? 0;
 
   return (

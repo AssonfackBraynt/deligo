@@ -180,6 +180,7 @@ model User {
   passwordHash          String?          @map("password_hash")
   avatarFileId          String?          @map("avatar_file_id") @db.Uuid
   accountStatus         AccountStatus    @default(pending) @map("account_status")
+  suspensionReason      String?          @map("suspension_reason")
   phoneVerifiedAt       DateTime?        @map("phone_verified_at") @db.Timestamptz
   emailVerifiedAt       DateTime?        @map("email_verified_at") @db.Timestamptz
   lastLoginAt           DateTime?        @map("last_login_at") @db.Timestamptz
@@ -923,7 +924,7 @@ model UploadedFile {
   providerProfileId String?          @map("provider_profile_id") @db.Uuid
   storageProvider   String           @map("storage_provider") @db.VarChar(64)
   bucketName        String?          @map("bucket_name") @db.VarChar(160)
-  objectKey         String           @map("object_key")
+  objectKey         String?          @map("object_key")
   storageUrl        String?          @map("storage_url")
   originalFilename  String?          @map("original_filename") @db.VarChar(255)
   mimeType          String?          @map("mime_type") @db.VarChar(120)
@@ -932,6 +933,7 @@ model UploadedFile {
   checksum          String?
   isEncrypted       Boolean          @default(false) @map("is_encrypted")
   encryptionIv      String?          @map("encryption_iv") @db.VarChar(64)
+  encryptedData     Bytes?           @map("encrypted_data")
   documentPurpose   String?          @map("document_purpose") @db.VarChar(64)
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
   deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz

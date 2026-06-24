@@ -33,6 +33,7 @@ import {
 } from '@/features/request/delivery-request-api';
 import { routes } from '@/lib/routes';
 import { ApiError } from '@/lib/api-client';
+import { useTrackingSocket } from '@/hooks/use-tracking-socket';
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -125,26 +126,12 @@ export default function TrackingPage() {
 
   useEffect(() => {
     if (!trackingCode) return;
-
     void loadData();
-
-    // SSE: server pushes a frame the instant the provider records a status change
-    const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
-    const es = new EventSource(`${BASE}/delivery-requests/track/${trackingCode}/events`);
-
-    es.onmessage = (event: MessageEvent<string>) => {
-      try {
-        const payload = JSON.parse(event.data) as { event?: string };
-        if (payload?.event === 'ping') return; // ignore 30-s keepalive frames
-      } catch {
-        // ignore non-JSON frames
-      }
-      void loadData(true);
-    };
-
-    return () => es.close();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingCode]);
+
+  // WebSocket: server pushes tracking-update → silent refetch
+  useTrackingSocket(trackingCode, () => void loadData(true));
 
   function handleCopy() {
     navigator.clipboard.writeText(trackingCode).then(() => {

@@ -36,20 +36,6 @@ function buildLoginBody(identifier: string, password: string) {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
-async function resolveProviderDestination(token: string): Promise<string> {
-  try {
-    const res = await fetch(`${API_BASE}/provider-profiles/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const body = await res.json();
-      return body.data?.verificationStatus === 'verified'
-        ? routes.provider.dashboard
-        : routes.provider.myProfile;
-    }
-  } catch { /* network error — fall through */ }
-  return routes.provider.myProfile;
-}
 
 function LoginForm() {
   const router = useRouter();
@@ -59,6 +45,7 @@ function LoginForm() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [suspensionReason, setSuspensionReason] = useState<string | null>(null);
 
   const {
     register,
@@ -68,6 +55,7 @@ function LoginForm() {
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
+    setSuspensionReason(null);
     try {
       const body = buildLoginBody(values.identifier, values.password);
       const result = await apiClient.post<AuthResult>('/auth/login', body);
@@ -78,14 +66,20 @@ function LoginForm() {
         if (result.user.roles.includes('admin')) {
           destination = routes.admin.dashboard;
         } else if (result.user.roles.includes('provider')) {
-          destination = await resolveProviderDestination(result.tokens.accessToken);
+          destination = routes.provider.dashboard;
         }
       }
 
       router.push(destination);
     } catch (err) {
       if (err instanceof ApiError) {
-        setServerError(err.message);
+        if (err.message === 'Your account has been suspended.') {
+          const errData = err.data as { error?: { suspensionReason?: string } } | undefined;
+          setSuspensionReason(errData?.error?.suspensionReason ?? null);
+          setServerError('suspended');
+        } else {
+          setServerError(err.message);
+        }
       } else {
         setServerError('An unexpected error occurred. Please try again.');
       }
@@ -121,11 +115,29 @@ function LoginForm() {
         </CardHeader>
 
         <CardContent>
-          {serverError && (
+          {serverError === 'suspended' ? (
+            <div className="mb-4 rounded-lg border border-danger/30 bg-danger/8 px-4 py-3 text-sm text-danger space-y-1">
+              <p className="font-semibold">Your account has been suspended.</p>
+              {suspensionReason && (
+                <p className="text-danger/80">Reason: {suspensionReason}</p>
+              )}
+              <p className="text-danger/80">
+                To appeal, contact support on WhatsApp:{' '}
+                <a
+                  href="https://wa.me/237690000019"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold underline"
+                >
+                  +237 690 000 019
+                </a>
+              </p>
+            </div>
+          ) : serverError ? (
             <div className="mb-4 rounded-lg border border-danger/30 bg-danger/8 px-4 py-3 text-sm text-danger">
               {serverError}
             </div>
-          )}
+          ) : null}
 
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
             <Field

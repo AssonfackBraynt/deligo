@@ -3,10 +3,10 @@
 import { MapPin, Package, UserRound } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useRequestStore } from '../request-store';
+import { useRequestDraft } from '../use-request-draft';
 
 export function RequestSummaryPanel({ draftId }: { draftId: string }) {
-  const draft = useRequestStore((state) => state.getDraft(draftId));
+  const d = useRequestDraft(draftId);
 
   return (
     <Card className="sticky top-6">
@@ -21,25 +21,25 @@ export function RequestSummaryPanel({ draftId }: { draftId: string }) {
           icon={<MapPin size={18} aria-hidden="true" />}
           label="Route"
           value={
-            draft?.pickupQuarterName && draft?.destinationQuarterName
-              ? `${draft.pickupQuarterName} → ${draft.destinationQuarterName}`
+            d?.pickupQuarterName && d?.destinationQuarterName
+              ? `${d.pickupQuarterName} → ${d.destinationQuarterName}`
               : 'Pickup and destination not set'
           }
         />
         <SummaryRow
           icon={<Package size={18} aria-hidden="true" />}
           label="Item"
-          value={draft?.itemName ?? 'Item details not set'}
+          value={d?.itemName ?? 'Item details not set'}
         />
         <SummaryRow
           icon={<UserRound size={18} aria-hidden="true" />}
           label="Provider"
-          value={draft?.selectedProviderName ?? draft?.providerMode?.replaceAll('_', ' ') ?? 'Not selected'}
+          value={d?.selectedProviderName ?? d?.providerMode?.replaceAll('_', ' ') ?? 'Not selected'}
         />
         <div className="rounded-lg bg-muted p-3">
           <p className="text-muted-foreground">Estimated total</p>
           <p className="mt-1 text-xl font-semibold text-foreground">
-            {draft?.finalPrice ? `${draft.finalPrice.toLocaleString()} FCFA` : 'Calculated at review'}
+            {d?.finalPrice ? `${d.finalPrice.toLocaleString()} FCFA` : 'Calculated at review'}
           </p>
         </div>
       </CardContent>
