@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { seedLocations } from './seeds/locations.seed';
+import { seedProviders } from './seeds/providers.seed';
+import { seedAdmins } from './seeds/admins.seed';
 
 const prisma = new PrismaClient();
 
@@ -19,6 +21,8 @@ async function main() {
   console.log('✓ Roles seeded');
 
   await seedLocations(prisma);
+  await seedProviders(prisma);
+  await seedAdmins(prisma);
 }
 
 main()

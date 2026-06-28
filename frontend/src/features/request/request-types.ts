@@ -6,7 +6,6 @@ export type DeliveryType =
   | 'product_delivery'
   | 'purchase_delivery'
   | 'business_delivery'
-  | 'intercity_delivery'
   | 'medication_delivery'
   | 'other';
 
@@ -54,6 +53,7 @@ export type RequestDraft = {
   desiredRewardAmount?: number;
   selectedProviderId?: string;
   selectedProviderName?: string;
+  estimatedDeliveryCost?: number;
   estimatedMinPrice?: number;
   estimatedMaxPrice?: number;
   finalPrice?: number;

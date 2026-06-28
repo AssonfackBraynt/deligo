@@ -8,9 +8,9 @@ import {
   MinLength,
 } from 'class-validator';
 
-// Accepts: 698546321 · 237698546321 · +237698546321
-const CAMEROON_PHONE_REGEX = /^(\+?237)?[2-9]\d{8}$/;
-const CAMEROON_PHONE_MSG = 'Enter a valid Cameroon number (e.g. 698 546 321 or +237698546321)';
+// Accepts: 6XXXXXXXX · 2376XXXXXXXX · +2376XXXXXXXX
+const CAMEROON_PHONE_REGEX = /^(\+?237)?6\d{8}$/;
+const CAMEROON_PHONE_MSG = 'Number must start with 6 and have 9 digits (e.g. 698 546 321)';
 
 export class CreateCustomerContactDto {
   @ApiProperty({ example: 'Jean Paul Mbarga' })

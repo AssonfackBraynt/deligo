@@ -16,7 +16,6 @@ export enum IntelligenceItemType {
   Food = 'food',
   Electronics = 'electronics',
   Business = 'business',
-  Intercity = 'intercity',
   Other = 'other',
 }
 

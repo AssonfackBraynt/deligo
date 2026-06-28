@@ -9,6 +9,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
+    "deploy": "npm run build && prisma migrate deploy && prisma db seed && node dist/main.js",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"prisma/**/*.prisma\"",
     "test": "jest",
@@ -17,7 +18,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:clean": "docker compose down -v"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -43,6 +47,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
+    "ts-node": "^10.9.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -67,7 +72,6 @@
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
-    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2"
   },

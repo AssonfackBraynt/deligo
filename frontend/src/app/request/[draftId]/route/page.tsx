@@ -34,9 +34,21 @@ export default function RouteInformationPage() {
       ? { id: lockedRegionId, name: lockedRegionName }
       : null;
 
+  // Date/time validation (computed here so canContinue can use them)
+  const now = new Date();
+  const earliest = new Date(now.getTime() + 15 * 60_000);
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const earliestTimeStr = `${String(earliest.getHours()).padStart(2, '0')}:${String(earliest.getMinutes()).padStart(2, '0')}`;
+  const selectedDate = draft?.expectedDeliveryDate ?? '';
+  const selectedTime = draft?.expectedDeliveryTime ?? '';
+  const isToday = selectedDate === todayStr;
+  const dateError = selectedDate && selectedDate < todayStr ? 'Delivery date cannot be in the past.' : undefined;
+  const timeError = selectedTime && isToday && selectedTime < earliestTimeStr ? `Time must be at least 15 minutes from now (${earliestTimeStr}).` : undefined;
+
   const canContinue = Boolean(
     draft?.destinationQuarterId && draft?.destinationLandmark &&
-    (isMedication || (draft?.pickupQuarterId && draft?.pickupLandmark)),
+    (isMedication || (draft?.pickupQuarterId && draft?.pickupLandmark)) &&
+    !dateError && !timeError,
   );
 
   function handleSaveLocation(target: PickerTarget, sel: LocationSelection) {
@@ -189,17 +201,26 @@ export default function RouteInformationPage() {
 
         {/* Optional date/time */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Expected Delivery Date">
+          <Field label="Expected Delivery Date" error={dateError}>
             <Input
               type="date"
-              value={draft?.expectedDeliveryDate ?? ''}
-              onChange={(e) => updateDraft(draftId, { expectedDeliveryDate: e.target.value })}
+              min={todayStr}
+              value={selectedDate}
+              className={dateError ? 'border-danger focus:border-danger' : undefined}
+              onChange={(e) => {
+                updateDraft(draftId, { expectedDeliveryDate: e.target.value });
+                if (e.target.value === todayStr && selectedTime && selectedTime < earliestTimeStr) {
+                  updateDraft(draftId, { expectedDeliveryTime: '' });
+                }
+              }}
             />
           </Field>
-          <Field label="Expected Delivery Time">
+          <Field label="Expected Delivery Time" error={timeError}>
             <Input
               type="time"
-              value={draft?.expectedDeliveryTime ?? ''}
+              min={isToday ? earliestTimeStr : undefined}
+              value={selectedTime}
+              className={timeError ? 'border-danger focus:border-danger' : undefined}
               onChange={(e) => updateDraft(draftId, { expectedDeliveryTime: e.target.value })}
             />
           </Field>

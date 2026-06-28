@@ -35,7 +35,6 @@ const DELIVERY_TYPE_LABELS: Record<string, string> = {
   product_delivery: 'Product',
   purchase_delivery: 'Purchase',
   business_delivery: 'Business',
-  intercity_delivery: 'Intercity',
   agency_pickup: 'Agency Pickup',
   other: 'Other',
 };

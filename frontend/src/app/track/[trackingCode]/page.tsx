@@ -10,6 +10,7 @@ import {
   Clock,
   Copy,
   Gavel,
+  MessageCircle,
   Package,
   PackageCheck,
   Star,
@@ -22,18 +23,66 @@ import { PublicHeader } from '@/components/layout/public-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
 import {
   getDeliveryRequestByTrackingCode,
   acceptOffer,
   cancelRequest,
+  counterOffer,
   rejectOffer,
   submitReview,
   updateReview,
+  type DeliveryOffer,
   type DeliveryRequestPublic,
 } from '@/features/request/delivery-request-api';
 import { routes } from '@/lib/routes';
 import { ApiError } from '@/lib/api-client';
 import { useTrackingSocket } from '@/hooks/use-tracking-socket';
+
+// ── WhatsApp ───────────────────────────────────────────────────────────────────
+
+const RECEPTIONIST_NUMBER = '237694374748';
+
+function buildWhatsAppMessage(data: DeliveryRequestPublic, trackingCode: string, baseUrl: string): string {
+  const lines: string[] = ['🚚 *DeliGo Delivery Request*', ''];
+
+  lines.push(`*Type:* ${data.deliveryType.replace(/_/g, ' ')}`);
+
+  if (data.route?.pickup) {
+    lines.push('');
+    lines.push('*📍 Pickup*');
+    lines.push(data.route.pickup);
+    if (data.route.pickupLandmark) lines.push(`Landmark: ${data.route.pickupLandmark}`);
+  }
+
+  if (data.route?.destination) {
+    lines.push('');
+    lines.push('*🏁 Destination*');
+    lines.push(data.route.destination);
+    if (data.route.destinationLandmark) lines.push(`Landmark: ${data.route.destinationLandmark}`);
+  }
+
+  lines.push('');
+  lines.push('*📦 Items*');
+  lines.push(`${data.itemCount} item${data.itemCount !== 1 ? 's' : ''}${data.hasFragileItems ? ' · includes fragile items ⚠️' : ''}`);
+
+  if (data.estimatedDeliveryCost != null) {
+    lines.push('');
+    lines.push(`*💰 Estimated Cost:* ${data.estimatedDeliveryCost.toLocaleString()} FCFA`);
+  }
+
+  if (data.desiredRewardAmount != null) {
+    lines.push(`*💵 Proposed Price:* ${data.desiredRewardAmount.toLocaleString()} FCFA`);
+  }
+
+  lines.push('');
+  lines.push(`*🔖 Tracking Code: ${trackingCode}*`);
+  lines.push(`Track your delivery here: ${baseUrl}/track/${trackingCode}`);
+  lines.push('');
+  lines.push('Please follow up with the assigned provider to ensure prompt delivery.');
+
+  return lines.join('\n');
+}
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -94,6 +143,13 @@ export default function TrackingPage() {
   // Offer actions
   const [offerAction, setOfferAction] = useState<string | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
+
+  // Counter-offer modal
+  const [counterTarget, setCounterTarget] = useState<DeliveryOffer | null>(null);
+  const [counterAmount, setCounterAmount] = useState('');
+  const [counterMessage, setCounterMessage] = useState('');
+  const [counterSubmitting, setCounterSubmitting] = useState(false);
+  const [counterError, setCounterError] = useState<string | null>(null);
 
   // Cancel request flow
   const [showCancel, setShowCancel] = useState(false);
@@ -166,6 +222,25 @@ export default function TrackingPage() {
     }
   }
 
+  async function handleCounterSubmit() {
+    if (!counterTarget) return;
+    const amount = Number(counterAmount);
+    if (!amount || amount <= 0) { setCounterError('Enter a valid amount.'); return; }
+    setCounterSubmitting(true);
+    setCounterError(null);
+    try {
+      await counterOffer(trackingCode, counterTarget.id, amount, counterMessage.trim() || undefined);
+      setCounterTarget(null);
+      setCounterAmount('');
+      setCounterMessage('');
+      await loadData();
+    } catch (err) {
+      setCounterError(err instanceof ApiError ? err.message : 'Failed to send counter-offer.');
+    } finally {
+      setCounterSubmitting(false);
+    }
+  }
+
   async function handleSubmitReview(e: React.FormEvent) {
     e.preventDefault();
     if (reviewRating === 0) return;
@@ -214,6 +289,8 @@ export default function TrackingPage() {
   const pendingOffers = data?.offers?.filter((o) => o.status === 'submitted') ?? [];
   const showOffers = data?.fulfillmentMode === 'open_marketplace' && pendingOffers.length > 0;
   const canCancel = data != null && ['draft', 'created', 'marketplace_open', 'offers_received'].includes(data.requestStatus);
+  const acceptedOffer = data?.offers?.find((o) => o.status === 'accepted');
+  const estimatedTotal = data?.estimatedDeliveryCost ?? null;
 
   return (
     <>
@@ -223,7 +300,20 @@ export default function TrackingPage() {
           {/* Header */}
           <div>
             <Badge tone="primary">Tracking</Badge>
-            <h1 className="mt-3 text-3xl font-semibold text-foreground">Track Delivery</h1>
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <h1 className="text-3xl font-semibold text-foreground">Track Delivery</h1>
+              {data && (
+                <a
+                  href={`https://wa.me/${RECEPTIONIST_NUMBER}?text=${encodeURIComponent(buildWhatsAppMessage(data, trackingCode, typeof window !== 'undefined' ? window.location.origin : 'https://deligo.cm'))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1ebe5d]"
+                >
+                  <MessageCircle size={15} aria-hidden="true" />
+                  Share on WhatsApp
+                </a>
+              )}
+            </div>
             <div className="mt-2 flex items-center gap-3">
               <p className="font-mono text-lg font-semibold text-foreground">{trackingCode}</p>
               <button
@@ -287,8 +377,12 @@ export default function TrackingPage() {
                     label="Items"
                     value={`${data.itemCount} item${data.itemCount !== 1 ? 's' : ''}${data.hasFragileItems ? ' · includes fragile' : ''}`}
                   />
-                  {data.estimatedDeliveryCost != null && (
-                    <TrackRow label="Estimated cost" value={`${data.estimatedDeliveryCost.toLocaleString()} FCFA`} />
+                  <PriceComparisonSection
+                    estimatedCost={estimatedTotal}
+                    bidAmount={data.desiredRewardAmount}
+                  />
+                  {acceptedOffer != null && (
+                    <TrackRow label="Provider's agreed price" value={`${acceptedOffer.amount.toLocaleString()} FCFA`} />
                   )}
                   <TrackRow
                     label="Posted"
@@ -301,22 +395,56 @@ export default function TrackingPage() {
               {showOffers && (
                 <Card>
                   <CardHeader>
-                    <h2 className="font-semibold text-foreground">Provider Offers</h2>
-                    <p className="text-sm text-muted-foreground">Accept an offer to assign a provider to your delivery.</p>
+                    <h2 className="font-semibold text-foreground">Provider Bids</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {pendingOffers.length} bid{pendingOffers.length !== 1 ? 's' : ''} received — sorted lowest to highest.
+                      Accept a bid or send a counter-offer.
+                    </p>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    {offerError && <p className="text-sm text-danger">{offerError}</p>}
-                    {pendingOffers.map((offer) => (
-                      <div key={offer.id} className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Gavel size={15} className="text-primary" />
-                            <span className="font-semibold text-foreground">
-                              {offer.amount.toLocaleString()} FCFA
+                  <CardContent className="space-y-3">
+                    {offerError && (
+                      <p className="rounded-lg bg-danger/8 px-3 py-2 text-sm text-danger">{offerError}</p>
+                    )}
+                    {pendingOffers.map((offer, idx) => {
+                      const isLowest  = idx === 0;
+                      const isHighest = idx === pendingOffers.length - 1 && pendingOffers.length > 1;
+                      return (
+                        <div
+                          key={offer.id}
+                          className={`rounded-xl border p-4 ${
+                            isLowest
+                              ? 'border-success/40 bg-success/5'
+                              : isHighest
+                              ? 'border-warning/40 bg-warning/5'
+                              : 'border-border bg-surface'
+                          }`}
+                        >
+                          {/* Badge + amount */}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Gavel size={16} className={isLowest ? 'text-success' : isHighest ? 'text-warning' : 'text-primary'} />
+                              <span className="text-lg font-bold text-foreground">
+                                {offer.amount.toLocaleString()} FCFA
+                              </span>
+                              {isLowest && (
+                                <span className="rounded-full bg-success px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                                  Best Bid
+                                </span>
+                              )}
+                              {isHighest && (
+                                <span className="rounded-full bg-warning px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                                  Highest
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              #{idx + 1} of {pendingOffers.length}
                             </span>
                           </div>
+
+                          {/* Provider info */}
                           {offer.provider && (
-                            <p className="text-sm text-muted-foreground">
+                            <p className="mt-1.5 text-sm text-muted-foreground">
                               {offer.provider.name}
                               {offer.provider.ratingCount > 0 && (
                                 <span className="ml-2 inline-flex items-center gap-0.5">
@@ -326,29 +454,52 @@ export default function TrackingPage() {
                               )}
                             </p>
                           )}
+
+                          {/* Provider message */}
                           {offer.message && (
-                            <p className="text-xs text-muted-foreground">"{offer.message}"</p>
+                            <p className="mt-1.5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground italic">
+                              &ldquo;{offer.message}&rdquo;
+                            </p>
                           )}
+
+                          {/* Actions */}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              disabled={offerAction === offer.id}
+                              onClick={() => void handleAcceptOffer(offer.id)}
+                            >
+                              <CheckCircle2 size={14} />
+                              Validate
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={offerAction === offer.id}
+                              onClick={() => {
+                                setCounterTarget(offer);
+                                setCounterAmount('');
+                                setCounterMessage('');
+                                setCounterError(null);
+                              }}
+                            >
+                              <Gavel size={14} />
+                              Counter Offer
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-muted-foreground"
+                              disabled={offerAction === offer.id}
+                              onClick={() => void handleRejectOffer(offer.id)}
+                            >
+                              <X size={14} />
+                              Decline
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            disabled={offerAction === offer.id}
-                            onClick={() => void handleAcceptOffer(offer.id)}
-                          >
-                            Accept
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={offerAction === offer.id}
-                            onClick={() => void handleRejectOffer(offer.id)}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </CardContent>
                 </Card>
               )}
@@ -596,11 +747,141 @@ export default function TrackingPage() {
           )}
         </Container>
       </main>
+      {/* Counter-offer modal */}
+      <Dialog
+        open={!!counterTarget}
+        onClose={() => setCounterTarget(null)}
+        title="Send a Counter Offer"
+      >
+        {counterTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted p-3 text-sm">
+              <p className="text-muted-foreground">Provider's bid</p>
+              <p className="mt-0.5 text-lg font-bold text-foreground">
+                {counterTarget.amount.toLocaleString()} FCFA
+              </p>
+              {counterTarget.provider && (
+                <p className="text-xs text-muted-foreground">{counterTarget.provider.name}</p>
+              )}
+            </div>
+
+            {counterError && (
+              <p className="rounded-lg border border-danger/30 bg-danger/8 px-3 py-2 text-sm text-danger">
+                {counterError}
+              </p>
+            )}
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">
+                Your counter amount (FCFA)
+              </label>
+              <input
+                type="number"
+                min="100"
+                placeholder="e.g. 2500"
+                value={counterAmount}
+                onChange={(e) => setCounterAmount(e.target.value)}
+                disabled={counterSubmitting}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">
+                Message to provider <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g. Can you deliver by this evening for that price?"
+                value={counterMessage}
+                onChange={(e) => setCounterMessage(e.target.value)}
+                disabled={counterSubmitting}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setCounterTarget(null)}
+                disabled={counterSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => void handleCounterSubmit()}
+                disabled={counterSubmitting}
+              >
+                <Gavel size={15} />
+                {counterSubmitting ? 'Sending…' : 'Send Counter Offer'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
     </>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+function PriceComparisonSection({
+  estimatedCost,
+  bidAmount,
+}: {
+  estimatedCost: number | null;
+  bidAmount: number | null;
+}) {
+  if (estimatedCost == null && bidAmount == null) return null;
+
+  // Only one value — fall back to a plain row
+  if (estimatedCost == null) {
+    return <TrackRow label="Your bid" value={`${bidAmount!.toLocaleString()} FCFA`} />;
+  }
+  if (bidAmount == null) {
+    return <TrackRow label="Estimated total" value={`${estimatedCost.toLocaleString()} FCFA`} />;
+  }
+
+  // Both values — size by which is the better deal (lower price)
+  const estimatedIsBetter = estimatedCost < bidAmount;
+  const bidIsBetter = bidAmount < estimatedCost;
+
+  return (
+    <>
+      {/* Estimated total */}
+      <div className="grid gap-1 p-4 sm:grid-cols-[160px_1fr] sm:gap-4">
+        <p className="text-sm font-semibold text-muted-foreground">Estimated total</p>
+        <div className="flex items-center gap-2">
+          <p className={estimatedIsBetter ? 'text-xl font-bold text-foreground' : 'text-sm text-muted-foreground'}>
+            {estimatedCost.toLocaleString()} FCFA
+          </p>
+          {estimatedIsBetter && (
+            <span className="rounded-full bg-success/12 px-2 py-0.5 text-xs font-semibold text-success">
+              Better deal
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Bid price */}
+      <div className="grid gap-1 p-4 sm:grid-cols-[160px_1fr] sm:gap-4">
+        <p className="text-sm font-semibold text-muted-foreground">Your bid</p>
+        <div className="flex items-center gap-2">
+          <p className={bidIsBetter ? 'text-xl font-bold text-foreground' : 'text-sm text-muted-foreground'}>
+            {bidAmount.toLocaleString()} FCFA
+          </p>
+          {bidIsBetter && (
+            <span className="rounded-full bg-success/12 px-2 py-0.5 text-xs font-semibold text-success">
+              Better deal
+            </span>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
 
 function TrackRow({ label, value }: { label: string; value: string }) {
   return (

@@ -9,7 +9,6 @@ import {
   Search,
   ShoppingBag,
   Sparkles,
-  Truck,
 } from 'lucide-react';
 import type { DeliveryType, ProviderSelectionMode, RequestStep } from './request-types';
 
@@ -58,12 +57,6 @@ export const deliveryTypes: {
     title: 'Business Delivery',
     description: 'Recurring delivery support for shops and teams.',
     icon: <BriefcaseBusiness size={22} aria-hidden="true" />,
-  },
-  {
-    value: 'intercity_delivery',
-    title: 'Intercity Delivery',
-    description: 'Send items between cities with trusted carriers.',
-    icon: <Truck size={22} aria-hidden="true" />,
   },
   {
     value: 'medication_delivery',

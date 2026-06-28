@@ -12,9 +12,9 @@ import type { CreateContactInput } from './contact-types';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
-// Accepts: 698546321 · 237698546321 · +237698546321
-const phoneRegex = /^(\+?237)?[2-9]\d{8}$/;
-const phoneMsg = 'Enter a valid 9-digit number (e.g. 698 546 321)';
+// Accepts: 6XXXXXXXX · 2376XXXXXXXX · +2376XXXXXXXX
+const phoneRegex = /^(\+?237)?6\d{8}$/;
+const phoneMsg = 'Number must start with 6 and have 9 digits (e.g. 698 546 321)';
 
 const schema = z.object({
   fullName: z

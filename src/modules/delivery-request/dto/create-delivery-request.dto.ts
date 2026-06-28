@@ -26,7 +26,6 @@ export const ALLOWED_DELIVERY_TYPES = [
   'product_delivery',
   'purchase_delivery',
   'business_delivery',
-  'intercity_delivery',
   'other',
 ] as const;
 

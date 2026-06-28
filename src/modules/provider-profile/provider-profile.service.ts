@@ -45,6 +45,8 @@ function toPrivateResponse(p: ProviderProfile) {
     userId: p.userId,
     agencyId: p.agencyId,
     phoneNumber: p.phoneNumber,
+    priceInTown: p.priceInTown != null ? p.priceInTown.toNumber() : null,
+    priceInRegion: p.priceInRegion != null ? p.priceInRegion.toNumber() : null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -214,6 +216,8 @@ export class ProviderProfileService {
       ...(isCompany && dto.businessAddress !== undefined && { businessAddress: dto.businessAddress }),
       ...(isCompany && dto.businessLat !== undefined && { businessLat: dto.businessLat }),
       ...(isCompany && dto.businessLng !== undefined && { businessLng: dto.businessLng }),
+      ...(dto.priceInTown !== undefined && { priceInTown: dto.priceInTown }),
+      ...(dto.priceInRegion !== undefined && { priceInRegion: dto.priceInRegion }),
     };
 
     const updated = await this.prisma.providerProfile.update({

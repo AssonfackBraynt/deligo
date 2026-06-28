@@ -18,8 +18,11 @@ async function bootstrap() {
   app.use(helmet());
   app.use(compression());
   app.use(cookieParser());
+  const isDev = config.get<string>('app.env') === 'development';
   app.enableCors({
-    origin: config.get<string[]>('app.corsOrigins'),
+    origin: isDev
+      ? (_origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => cb(null, true)
+      : config.get<string[]>('app.corsOrigins'),
     credentials: true,
   });
 

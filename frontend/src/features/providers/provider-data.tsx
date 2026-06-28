@@ -78,9 +78,9 @@ export const publicProviders: PublicProvider[] = [
     eta: '40-80 min',
     priceRange: '2,500 - 4,500 FCFA',
     verified: true,
-    services: ['Agency Pickup', 'Business Delivery', 'Intercity Delivery'],
+    services: ['Agency Pickup', 'Business Delivery'],
     description:
-      'Agency dispatch team for business deliveries, pickup handling, and intercity coordination.',
+      'Agency dispatch team for business deliveries and pickup handling.',
     icon: <Building2 size={24} aria-hidden="true" />,
   },
 ];

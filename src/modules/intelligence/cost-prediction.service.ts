@@ -19,7 +19,6 @@ const defaultRates: Record<IntelligenceItemType, ProviderRateInputDto> = {
     minPrice: 1800,
   },
   [IntelligenceItemType.Business]: { baseFee: 1000, pricePerKm: 150, pricePerKg: 70, minPrice: 1500 },
-  [IntelligenceItemType.Intercity]: { baseFee: 2500, pricePerKm: 90, pricePerKg: 120, minPrice: 3500 },
   [IntelligenceItemType.Other]: { baseFee: 900, pricePerKm: 150, pricePerKg: 70, minPrice: 1300 },
 };
 

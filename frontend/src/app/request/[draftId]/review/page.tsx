@@ -183,12 +183,18 @@ export default function RequestReviewPage() {
           {draft?.selectedProviderName && (
             <ReviewRow label="Provider" value={draft.selectedProviderName} />
           )}
-          {draft?.desiredRewardAmount ? (
-            <ReviewRow
-              label="Desired reward"
-              value={`${draft.desiredRewardAmount.toLocaleString()} FCFA`}
-            />
-          ) : null}
+          {(() => {
+            const rewardAmount =
+              draft?.providerMode === 'open_marketplace'
+                ? draft?.desiredRewardAmount
+                : draft?.estimatedDeliveryCost;
+            return rewardAmount != null ? (
+              <ReviewRow
+                label="Desired reward"
+                value={`${rewardAmount.toLocaleString()} FCFA`}
+              />
+            ) : null;
+          })()}
           {draft?.expectedDeliveryDate && (
             <ReviewRow label="Expected date" value={draft.expectedDeliveryDate} />
           )}

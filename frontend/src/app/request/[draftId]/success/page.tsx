@@ -13,7 +13,7 @@ import type { RequestDraft } from '@/features/request/request-types';
 
 const RECEPTIONIST_NUMBER = '237694374748';
 
-function buildWhatsAppMessage(draft: RequestDraft | undefined, trackingCode: string): string {
+function buildWhatsAppMessage(draft: RequestDraft | undefined, trackingCode: string, baseUrl: string): string {
   const lines: string[] = [
     '🚚 *New DeliGo Delivery Request*',
     '',
@@ -58,6 +58,7 @@ function buildWhatsAppMessage(draft: RequestDraft | undefined, trackingCode: str
 
   lines.push('');
   lines.push(`*🔖 Tracking Code: ${trackingCode}*`);
+  lines.push(`Track your delivery here: ${baseUrl}/track/${trackingCode}`);
   lines.push('');
   lines.push('Please follow up with the assigned provider to ensure prompt delivery.');
 
@@ -79,7 +80,7 @@ export default function RequestSuccessPage() {
   }
 
   const whatsappHref = trackingCode
-    ? `https://wa.me/${RECEPTIONIST_NUMBER}?text=${encodeURIComponent(buildWhatsAppMessage(draft, trackingCode))}`
+    ? `https://wa.me/${RECEPTIONIST_NUMBER}?text=${encodeURIComponent(buildWhatsAppMessage(draft, trackingCode, typeof window !== 'undefined' ? window.location.origin : 'https://deligo.cm'))}`
     : '#';
 
   return (

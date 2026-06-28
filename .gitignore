@@ -9,15 +9,11 @@ frontend/out/
 
 # ── Environment variables — NEVER commit real credentials ─────────────────────
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 frontend/.env
-frontend/.env.local
-frontend/.env.development.local
-frontend/.env.test.local
-frontend/.env.production.local
+frontend/.env.*
+!frontend/.env.example
 
 # ── TypeScript ────────────────────────────────────────────────────────────────
 *.tsbuildinfo
@@ -35,6 +31,11 @@ coverage/
 
 # ── Runtime uploads ───────────────────────────────────────────────────────────
 uploads/
+
+# ── Data files (may contain personal/provider data) ──────────────────────────
+*.xlsx
+*.xls
+*.csv
 
 # ── OS artifacts ──────────────────────────────────────────────────────────────
 .DS_Store

@@ -30,22 +30,6 @@ function buildCode(): string {
   return code;
 }
 
-// ── Pricing ───────────────────────────────────────────────────────────────────
-const REGION_BASE_PRICE: Record<string, number> = {
-  West: 1000,
-  Centre: 1500,
-  Littoral: 1500,
-  'South West': 1500,
-};
-
-function estimateDeliveryCost(
-  pickupRegionName: string,
-  pickupTownId: string,
-  destinationTownId: string,
-): number {
-  const baseline = REGION_BASE_PRICE[pickupRegionName] ?? 1500;
-  return baseline + (pickupTownId === destinationTownId ? 0 : 500);
-}
 
 // ── Response shapes ───────────────────────────────────────────────────────────
 type QuarterWithLocation = Quarter & {
@@ -73,6 +57,7 @@ function toPublicResponse(r: WithRelations, extras: { events?: any[]; offers?: a
     fulfillmentMode: r.fulfillmentMode,
     deliveryType: r.deliveryType,
     estimatedDeliveryCost: r.deliveryCost ? Number(r.deliveryCost) : null,
+    desiredRewardAmount: r.desiredRewardAmount ? Number(r.desiredRewardAmount) : null,
     createdAt: r.createdAt,
     route: r.route
       ? {
@@ -281,17 +266,129 @@ export class DeliveryRequestService {
   private async loadOffers(requestId: string) {
     const offers = await this.prisma.marketplaceOffer.findMany({
       where: { deliveryRequestId: requestId, offerStatus: 'submitted', deletedAt: null },
-      include: { providerProfile: { select: { displayName: true, ratingAverage: true } } },
-      orderBy: { submittedAt: 'asc' },
+      include: {
+        providerProfile: { select: { displayName: true, ratingAverage: true, ratingCount: true } },
+      },
+      orderBy: { offerAmount: 'asc' },
     });
     return offers.map((o) => ({
       id: o.id,
-      providerName: o.providerProfile?.displayName ?? 'Unknown',
-      providerRating: o.providerProfile ? Number(o.providerProfile.ratingAverage) : null,
-      offerAmount: Number(o.offerAmount),
+      provider: o.providerProfile
+        ? {
+            name: o.providerProfile.displayName,
+            rating: Number(o.providerProfile.ratingAverage),
+            ratingCount: o.providerProfile.ratingCount,
+          }
+        : null,
+      amount: Number(o.offerAmount),
       message: o.message,
-      submittedAt: o.submittedAt,
+      status: o.offerStatus,
+      submittedAt: o.submittedAt.toISOString(),
     }));
+  }
+
+  // ── Pricing estimation ────────────────────────────────────────────────────
+
+  private async estimateDeliveryCost(
+    regionId: string,
+    isSameTown: boolean,
+    items: Array<{
+      weightKg?: number | null;
+      sizeLabel?: string | null;
+      category?: string | null;
+      quantity?: number | null;
+      isFragile?: boolean | null;
+    }>,
+  ): Promise<number> {
+    try {
+      const priceField = isSameTown ? 'priceInTown' : 'priceInRegion';
+
+      // Regional providers first (via ProviderBranch → Quarter → Town → Region)
+      let providers = await this.prisma.providerProfile.findMany({
+        where: {
+          deletedAt: null,
+          availabilityStatus: { not: 'offline' },
+          [priceField]: { not: null },
+          branches: {
+            some: {
+              isActive: true,
+              deletedAt: null,
+              quarter: { town: { regionId } },
+            },
+          },
+        },
+        select: { priceInTown: true, priceInRegion: true },
+      });
+
+      // Fallback: any provider with the price set (platform not yet dense in all regions)
+      if (providers.length === 0) {
+        providers = await this.prisma.providerProfile.findMany({
+          where: {
+            deletedAt: null,
+            availabilityStatus: { not: 'offline' },
+            [priceField]: { not: null },
+          },
+          select: { priceInTown: true, priceInRegion: true },
+        });
+      }
+
+      const prices = providers
+        .map((p) => (isSameTown ? p.priceInTown : p.priceInRegion))
+        .filter((p): p is NonNullable<typeof p> => p != null)
+        .map((p) => p.toNumber());
+
+      const basePrice =
+        prices.length > 0
+          ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+          : 0;
+
+      return basePrice + this.computeSurcharges(items);
+    } catch {
+      return 0;
+    }
+  }
+
+  private computeSurcharges(
+    items: Array<{
+      weightKg?: number | null;
+      sizeLabel?: string | null;
+      category?: string | null;
+      quantity?: number | null;
+      isFragile?: boolean | null;
+    }>,
+  ): number {
+    const first = items[0] ?? {};
+    const totalQty = items.reduce((s, i) => s + (i.quantity ?? 1), 0);
+    const w = first.weightKg ?? 0;
+    const weightSurcharge = w > 50 ? 1500 : w > 35 ? 1000 : w > 20 ? 600 : w > 10 ? 300 : w > 5 ? 150 : 0;
+    const size = first.sizeLabel ?? '';
+    const sizeSurcharge = size === 'oversized' ? 1000 : size === 'large' ? 400 : size === 'medium' ? 200 : 0;
+    const quantitySurcharge = Math.min(Math.max(0, totalQty - 1) * 50, 500);
+    const fragileSurcharge = items.some((i) => i.isFragile) ? 300 : 0;
+    const CATEGORY_SURCHARGE: Record<string, number> = { electronics: 200, food: 100, medical: 100, vehicle_parts: 300, furniture: 500 };
+    const categorySurcharge = CATEGORY_SURCHARGE[first.category ?? ''] ?? 0;
+    return weightSurcharge + sizeSurcharge + quantitySurcharge + fragileSurcharge + categorySurcharge;
+  }
+
+  async estimateForRequest(
+    pickupQuarterId: string,
+    destinationQuarterId: string,
+    items: Array<{
+      weightKg?: number | null;
+      sizeLabel?: string | null;
+      category?: string | null;
+      quantity?: number | null;
+      isFragile?: boolean | null;
+    }>,
+  ): Promise<{ estimatedCost: number; isSameTown: boolean }> {
+    const [pickup, destination] = await Promise.all([
+      this.prisma.quarter.findFirst({ where: { id: pickupQuarterId }, select: { townId: true, town: { select: { regionId: true } } } }),
+      this.prisma.quarter.findFirst({ where: { id: destinationQuarterId }, select: { townId: true } }),
+    ]);
+    if (!pickup || !destination) return { estimatedCost: 0, isSameTown: false };
+    const isSameTown = pickup.townId === destination.townId;
+    const estimatedCost = await this.estimateDeliveryCost(pickup.town.regionId, isSameTown, items);
+    return { estimatedCost, isSameTown };
   }
 
   // ── Customer: Create ───────────────────────────────────────────────────────
@@ -334,10 +431,10 @@ export class DeliveryRequestService {
     const mode = (dto.fulfillmentMode ?? 'open_marketplace') as any;
     const isDirect = mode !== 'open_marketplace';
 
-    const deliveryCost = estimateDeliveryCost(
-      pickupQuarter.town.region.name,
-      pickupQuarter.townId,
-      destinationQuarter.townId,
+    const deliveryCost = await this.estimateDeliveryCost(
+      pickupQuarter.town.regionId,
+      pickupQuarter.townId === destinationQuarter.townId,
+      dto.items,
     );
 
     const pickupLabel = formatLocation(pickupQuarter as any);
@@ -553,6 +650,43 @@ export class DeliveryRequestService {
     });
 
     return { success: true, message: 'Offer rejected.' };
+  }
+
+  async counterOffer(trackingCode: string, offerId: string, amount: number, message?: string) {
+    const request = await this.prisma.deliveryRequest.findFirst({
+      where: { publicTrackingCode: trackingCode.toUpperCase(), deletedAt: null },
+      include: { customerContact: { select: { fullName: true, whatsappNumber: true } } },
+    });
+    if (!request) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Request not found.' } });
+
+    if (!['created', 'marketplace_open', 'offers_received'].includes(request.requestStatus)) {
+      throw new BadRequestException({ success: false, error: { code: ErrorCode.ValidationError, message: 'Cannot counter-offer at this stage.' } });
+    }
+
+    const offer = await this.prisma.marketplaceOffer.findFirst({
+      where: { id: offerId, deliveryRequestId: request.id, offerStatus: 'submitted', deletedAt: null },
+      include: { providerProfile: { select: { displayName: true } } },
+    });
+    if (!offer) throw new NotFoundException({ success: false, error: { code: ErrorCode.ResourceNotFound, message: 'Offer not found.' } });
+
+    await this.prisma.deliveryRequest.update({
+      where: { id: request.id },
+      data: { desiredRewardAmount: amount },
+    });
+
+    void this.notifications.notifyCustomerService({
+      event: 'COUNTER_OFFER',
+      trackingCode: request.publicTrackingCode,
+      deliveryRequestId: request.id,
+      deliveryType: request.deliveryType,
+      customerName: request.customerContact.fullName,
+      customerWhatsapp: request.customerContact.whatsappNumber,
+      providerName: offer.providerProfile?.displayName,
+      amount,
+      notes: message,
+    });
+
+    return { success: true };
   }
 
   // ── Customer: My requests ────────────────────────────────────────────────
@@ -1091,18 +1225,37 @@ export class DeliveryRequestService {
 
   // ── Recommended providers ─────────────────────────────────────────────────
 
-  async recommendProviders(city?: string, pickupQuarterId?: string, destinationQuarterId?: string) {
-    // Resolve town IDs for branch proximity matching
+  async recommendProviders(
+    city?: string,
+    pickupQuarterId?: string,
+    destinationQuarterId?: string,
+    itemHints?: {
+      weightKg?: number;
+      sizeLabel?: string;
+      category?: string;
+      quantity?: number;
+      isFragile?: boolean;
+    },
+  ) {
+    // Resolve town IDs and pickup region for filtering + branch proximity matching
     let pickupTownId: string | undefined;
     let destinationTownId: string | undefined;
+    let pickupRegionName: string | undefined;
+
     if (pickupQuarterId) {
-      const q = await this.prisma.quarter.findFirst({ where: { id: pickupQuarterId }, select: { townId: true } });
+      const q = await this.prisma.quarter.findFirst({
+        where: { id: pickupQuarterId },
+        select: { townId: true, town: { select: { region: { select: { name: true } } } } },
+      });
       pickupTownId = q?.townId;
+      pickupRegionName = q?.town?.region?.name;
     }
     if (destinationQuarterId) {
       const q = await this.prisma.quarter.findFirst({ where: { id: destinationQuarterId }, select: { townId: true } });
       destinationTownId = q?.townId;
     }
+
+    const isSameTown = !!(pickupTownId && destinationTownId && pickupTownId === destinationTownId);
 
     // Find company providers that have a branch in the pickup or destination town
     const nearbyBranchTownIds = [pickupTownId, destinationTownId].filter(Boolean) as string[];
@@ -1117,10 +1270,19 @@ export class DeliveryRequestService {
       }
     }
 
+    // When a pickup region is known, restrict results strictly to that region.
+    // serviceCoverage is stored as "{RegionName} region" (e.g. "Littoral region").
+    // Exact match avoids false positives like "North" matching "Far North region".
+    const regionFilter = pickupRegionName
+      ? { serviceCoverage: `${pickupRegionName} region` }
+      : {};
+
     const providers = await this.prisma.providerProfile.findMany({
-      where: { deletedAt: null, availabilityStatus: { in: ['available', 'busy'] as any[] } },
-      select: { id: true, displayName: true, providerType: true, baseCity: true, ratingAverage: true, ratingCount: true, verificationStatus: true, availabilityStatus: true, isFeatured: true },
+      where: { deletedAt: null, availabilityStatus: { in: ['available', 'busy'] as any[] }, ...regionFilter },
+      select: { id: true, displayName: true, providerType: true, baseCity: true, ratingAverage: true, ratingCount: true, verificationStatus: true, availabilityStatus: true, isFeatured: true, priceInTown: true, priceInRegion: true },
     });
+
+    const surcharges = itemHints ? this.computeSurcharges([itemHints]) : 0;
 
     return providers
       .map((p) => {
@@ -1133,10 +1295,12 @@ export class DeliveryRequestService {
         else if (p.availabilityStatus === 'busy') score += 1;
         score += Number(p.ratingAverage) * 0.4;
         if (p.isFeatured) score += 1;
-        return { ...p, ratingAverage: Number(p.ratingAverage), nearbyBranchName: branchMap.get(p.id) ?? null, score };
+        const basePrice = isSameTown ? p.priceInTown?.toNumber() ?? null : p.priceInRegion?.toNumber() ?? null;
+        const estimatedPrice = basePrice !== null ? basePrice + surcharges : null;
+        const { priceInTown: _pit, priceInRegion: _pir, ...rest } = p;
+        return { ...rest, ratingAverage: Number(p.ratingAverage), nearbyBranchName: branchMap.get(p.id) ?? null, estimatedPrice, score };
       })
       .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
       .map(({ score: _score, ...p }) => p);
   }
 

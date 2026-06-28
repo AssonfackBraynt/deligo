@@ -1,4 +1,10 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const API_PORT = 4000;
+const API_PATH = '/api/v1';
+
+function getBaseUrl(): string {
+  if (typeof window === 'undefined') return `http://localhost:${API_PORT}${API_PATH}`;
+  return `http://${window.location.hostname}:${API_PORT}${API_PATH}`;
+}
 
 function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -36,7 +42,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+  const res = await fetch(`${getBaseUrl()}${path}`, { ...init, headers });
 
   const body = (await res.json()) as {
     success?: boolean;
@@ -84,7 +90,7 @@ async function uploadRequest<T>(path: string, formData: FormData): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: formData });
+  const res = await fetch(`${getBaseUrl()}${path}`, { method: 'POST', headers, body: formData });
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {

@@ -21,12 +21,20 @@ export type DeliveryOffer = {
   submittedAt: string;
 };
 
+export function counterOffer(trackingCode: string, offerId: string, amount: number, message?: string) {
+  return apiClient.post<{ success: boolean }>(
+    `/delivery-requests/track/${encodeURIComponent(trackingCode)}/offers/${encodeURIComponent(offerId)}/counter`,
+    { amount, message },
+  );
+}
+
 export type DeliveryRequestPublic = {
   trackingCode: string;
   requestStatus: string;
   fulfillmentMode: string | null;
   deliveryType: string;
   estimatedDeliveryCost: number | null;
+  desiredRewardAmount: number | null;
   createdAt: string;
   route: {
     pickup: string;
@@ -108,6 +116,21 @@ export type RecommendedProvider = {
   verificationStatus: string;
   availabilityStatus: string;
   isFeatured: boolean;
+  nearbyBranchName: string | null;
+  estimatedPrice: number | null;
+};
+
+export type EstimateDeliveryInput = {
+  pickupQuarterId: string;
+  destinationQuarterId: string;
+  items: Array<{
+    itemName: string;
+    weightKg?: number;
+    sizeLabel?: string;
+    category?: string;
+    quantity?: number;
+    isFragile?: boolean;
+  }>;
 };
 
 // ── API calls ─────────────────────────────────────────────────────────────────
@@ -124,9 +147,27 @@ export function getMyDeliveryRequests() {
   return apiClient.get<DeliveryRequestPrivate[]>('/delivery-requests/me');
 }
 
-export function getRecommendedProviders(city?: string) {
-  const q = city ? `?city=${encodeURIComponent(city)}` : '';
-  return apiClient.get<RecommendedProvider[]>(`/delivery-requests/recommended-providers${q}`);
+export function getRecommendedProviders(
+  city?: string,
+  itemHints?: { weightKg?: number; sizeLabel?: string; category?: string; quantity?: number; isFragile?: boolean },
+  pickupQuarterId?: string,
+  destinationQuarterId?: string,
+) {
+  const params = new URLSearchParams();
+  if (city) params.set('city', city);
+  if (pickupQuarterId) params.set('pickupQuarterId', pickupQuarterId);
+  if (destinationQuarterId) params.set('destinationQuarterId', destinationQuarterId);
+  if (itemHints?.weightKg != null) params.set('weightKg', String(itemHints.weightKg));
+  if (itemHints?.sizeLabel) params.set('sizeLabel', itemHints.sizeLabel);
+  if (itemHints?.category) params.set('category', itemHints.category);
+  if (itemHints?.quantity != null) params.set('quantity', String(itemHints.quantity));
+  if (itemHints?.isFragile != null) params.set('isFragile', String(itemHints.isFragile));
+  const qs = params.toString();
+  return apiClient.get<RecommendedProvider[]>(`/delivery-requests/recommended-providers${qs ? '?' + qs : ''}`);
+}
+
+export function estimateDelivery(input: EstimateDeliveryInput) {
+  return apiClient.post<{ estimatedCost: number; isSameTown: boolean }>('/delivery-requests/estimate', input);
 }
 
 export function acceptOffer(trackingCode: string, offerId: string) {
@@ -155,11 +196,3 @@ export function cancelRequest(trackingCode: string, reason?: string) {
   return apiClient.post<{ success: boolean }>(`/delivery-requests/track/${encodeURIComponent(trackingCode)}/cancel`, { reason });
 }
 
-export function getRecommendedProvidersWithQuarters(pickupQuarterId?: string, destinationQuarterId?: string, city?: string) {
-  const params = new URLSearchParams();
-  if (city) params.set('city', city);
-  if (pickupQuarterId) params.set('pickupQuarterId', pickupQuarterId);
-  if (destinationQuarterId) params.set('destinationQuarterId', destinationQuarterId);
-  const qs = params.toString();
-  return apiClient.get<Array<{ id: string; displayName: string; providerType: string; ratingAverage: number; ratingCount: number; verificationStatus: string; availabilityStatus: string; nearbyBranchName: string | null }>>(`/delivery-requests/recommended-providers${qs ? '?' + qs : ''}`);
-}

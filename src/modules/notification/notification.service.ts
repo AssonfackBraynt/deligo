@@ -7,6 +7,7 @@ export type NotificationEvent =
   | 'DIRECT_REQUEST'
   | 'NEW_BID'
   | 'BID_ACCEPTED'
+  | 'COUNTER_OFFER'
   | 'PROVIDER_ASSIGNED'
   | 'PARCEL_COLLECTED'
   | 'IN_TRANSIT'

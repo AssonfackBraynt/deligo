@@ -12,7 +12,7 @@ import { RadioCard } from '@/components/ui/radio-card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { routes } from '@/lib/routes';
 import { RequestActions } from '@/features/request/components/request-actions';
-import { getRecommendedProviders } from '@/features/request/delivery-request-api';
+import { estimateDelivery, getRecommendedProviders } from '@/features/request/delivery-request-api';
 import type { RecommendedProvider } from '@/features/request/delivery-request-api';
 import { providerModes } from '@/features/request/request-data';
 import { useRequestStore } from '@/features/request/request-store';
@@ -25,6 +25,52 @@ export default function ProviderSelectionPage() {
   const updateDraft = useRequestStore((state) => state.updateDraft);
   const [mode, setMode] = useState<ProviderSelectionMode>(draft?.providerMode ?? 'open_marketplace');
 
+  // Fetch estimate once the route and item data are available
+  useEffect(() => {
+    if (!draft?.pickupQuarterId || !draft?.destinationQuarterId || !draft?.itemName) return;
+
+    estimateDelivery({
+      pickupQuarterId: draft.pickupQuarterId,
+      destinationQuarterId: draft.destinationQuarterId,
+      items: [
+        {
+          itemName: draft.itemName,
+          weightKg: draft.weightKg,
+          sizeLabel: draft.sizeLabel,
+          category: draft.category,
+          quantity: draft.quantity,
+          isFragile: draft.isFragile,
+        },
+      ],
+    })
+      .then((res) => updateDraft(draftId, { estimatedDeliveryCost: res.estimatedCost }))
+      .catch(() => undefined);
+  // Re-run whenever any parameter that affects the price changes
+  }, [
+    draftId,
+    draft?.pickupQuarterId,
+    draft?.destinationQuarterId,
+    draft?.itemName,
+    draft?.weightKg,
+    draft?.sizeLabel,
+    draft?.category,
+    draft?.quantity,
+    draft?.isFragile,
+    updateDraft,
+  ]);
+
+  const itemHints = useMemo(
+    () => ({
+      weightKg: draft?.weightKg,
+      sizeLabel: draft?.sizeLabel,
+      category: draft?.category,
+      quantity: draft?.quantity,
+      isFragile: draft?.isFragile,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft?.weightKg, draft?.sizeLabel, draft?.category, draft?.quantity, draft?.isFragile],
+  );
+
   const canContinue = useMemo(() => {
     if (mode === 'open_marketplace') return Boolean(draft?.desiredRewardAmount);
     return Boolean(draft?.selectedProviderId);
@@ -35,10 +81,11 @@ export default function ProviderSelectionPage() {
     updateDraft(draftId, { providerMode: value });
   };
 
-  function handleProviderSelect(p: { id: string; displayName: string }) {
+  function handleProviderSelect(p: { id: string; displayName: string; estimatedPrice?: number | null }) {
     updateDraft(draftId, {
       selectedProviderId: p.id,
       selectedProviderName: p.displayName,
+      ...(p.estimatedPrice != null && { estimatedDeliveryCost: p.estimatedPrice }),
     });
   }
 
@@ -69,7 +116,6 @@ export default function ProviderSelectionPage() {
                 desiredRewardAmount: amount,
                 selectedProviderId: undefined,
                 selectedProviderName: undefined,
-                finalPrice: amount + 300,
               })
             }
           />
@@ -78,6 +124,9 @@ export default function ProviderSelectionPage() {
         {mode === 'recommended_provider' && (
           <RecommendedProviderList
             pickupCity={draft?.pickupTownName}
+            pickupQuarterId={draft?.pickupQuarterId}
+            destinationQuarterId={draft?.destinationQuarterId}
+            itemHints={itemHints}
             selectedProviderId={draft?.selectedProviderId}
             onSelect={handleProviderSelect}
           />
@@ -86,6 +135,9 @@ export default function ProviderSelectionPage() {
         {mode === 'search_provider' && (
           <SearchProviderPanel
             pickupCity={draft?.pickupTownName}
+            pickupQuarterId={draft?.pickupQuarterId}
+            destinationQuarterId={draft?.destinationQuarterId}
+            itemHints={itemHints}
             selectedProviderId={draft?.selectedProviderId}
             onSelect={handleProviderSelect}
           />
@@ -140,24 +192,41 @@ function MarketplacePanel({
   );
 }
 
+type ItemHints = {
+  weightKg?: number;
+  sizeLabel?: string;
+  category?: string;
+  quantity?: number;
+  isFragile?: boolean;
+};
+
 function RecommendedProviderList({
   pickupCity,
+  pickupQuarterId,
+  destinationQuarterId,
+  itemHints,
   selectedProviderId,
   onSelect,
 }: {
   pickupCity?: string;
+  pickupQuarterId?: string;
+  destinationQuarterId?: string;
+  itemHints?: ItemHints;
   selectedProviderId?: string;
-  onSelect: (p: { id: string; displayName: string }) => void;
+  onSelect: (p: { id: string; displayName: string; estimatedPrice?: number | null }) => void;
 }) {
   const [providers, setProviders] = useState<RecommendedProvider[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    getRecommendedProviders(pickupCity)
+    setShowAll(false);
+    getRecommendedProviders(pickupCity, itemHints, pickupQuarterId, destinationQuarterId)
       .then(setProviders)
       .catch(() => setProviders([]))
       .finally(() => setLoading(false));
-  }, [pickupCity]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupCity, pickupQuarterId, destinationQuarterId]);
 
   if (loading) {
     return (
@@ -173,47 +242,77 @@ function RecommendedProviderList({
     return (
       <Card className="shadow-none">
         <CardContent className="py-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            No providers available right now. Try Open Marketplace instead.
+          <p className="text-sm font-medium text-foreground">No providers in this region yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            No delivery services are registered for your pickup area. Switch to Open Marketplace so any verified provider can pick up your request.
           </p>
         </CardContent>
       </Card>
     );
   }
 
+  const PAGE = 6;
+  const displayed = showAll ? providers : providers.slice(0, PAGE);
+  const remaining = providers.length - PAGE;
+
   return (
     <div className="grid gap-3">
-      {providers.map((p) => (
+      {displayed.map((p) => (
         <ProviderCard
           key={p.id}
           provider={p}
           selected={selectedProviderId === p.id}
-          onSelect={() => onSelect({ id: p.id, displayName: p.displayName })}
+          onSelect={() => onSelect({ id: p.id, displayName: p.displayName, estimatedPrice: p.estimatedPrice })}
         />
       ))}
+      {!showAll && remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full rounded-lg border border-dashed border-border py-3 text-sm font-medium text-primary hover:border-primary/60 hover:bg-primary/5 transition-colors"
+        >
+          Show {remaining} more provider{remaining !== 1 ? 's' : ''}
+        </button>
+      )}
+      {showAll && providers.length > PAGE && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="w-full rounded-lg border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:border-primary/60 hover:bg-primary/5 transition-colors"
+        >
+          Show less
+        </button>
+      )}
     </div>
   );
 }
 
 function SearchProviderPanel({
   pickupCity,
+  pickupQuarterId,
+  destinationQuarterId,
+  itemHints,
   selectedProviderId,
   onSelect,
 }: {
   pickupCity?: string;
+  pickupQuarterId?: string;
+  destinationQuarterId?: string;
+  itemHints?: ItemHints;
   selectedProviderId?: string;
-  onSelect: (p: { id: string; displayName: string }) => void;
+  onSelect: (p: { id: string; displayName: string; estimatedPrice?: number | null }) => void;
 }) {
   const [query, setQuery] = useState('');
   const [allProviders, setAllProviders] = useState<RecommendedProvider[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getRecommendedProviders(pickupCity)
+    getRecommendedProviders(pickupCity, itemHints, pickupQuarterId, destinationQuarterId)
       .then(setAllProviders)
       .catch(() => setAllProviders([]))
       .finally(() => setLoading(false));
-  }, [pickupCity]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupCity, pickupQuarterId, destinationQuarterId]);
 
   const filtered = query.trim()
     ? allProviders.filter((p) =>
@@ -239,6 +338,21 @@ function SearchProviderPanel({
             <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
           ))}
         </div>
+      ) : filtered.length === 0 ? (
+        <Card className="shadow-none">
+          <CardContent className="py-6 text-center">
+            {allProviders.length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-foreground">No providers in this region yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  No delivery services are registered for your pickup area. Switch to Open Marketplace instead.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No provider matches your search.</p>
+            )}
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-3">
           {filtered.map((p) => (
@@ -246,7 +360,7 @@ function SearchProviderPanel({
               key={p.id}
               provider={p}
               selected={selectedProviderId === p.id}
-              onSelect={() => onSelect({ id: p.id, displayName: p.displayName })}
+              onSelect={() => onSelect({ id: p.id, displayName: p.displayName, estimatedPrice: p.estimatedPrice })}
             />
           ))}
         </div>
@@ -300,6 +414,11 @@ function ProviderCard({
               {provider.availabilityStatus === 'available' ? 'Available now' : 'Busy'}
             </span>
           </div>
+          {provider.estimatedPrice != null && (
+            <p className="mt-2 text-sm font-semibold text-primary">
+              ~{provider.estimatedPrice.toLocaleString()} FCFA
+            </p>
+          )}
         </div>
       </div>
     </button>

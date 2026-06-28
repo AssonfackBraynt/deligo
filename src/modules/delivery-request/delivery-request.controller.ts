@@ -16,6 +16,8 @@ import { AssignRiderDto } from './dto/assign-rider.dto';
 import { SubmitReviewDto } from './dto/submit-review.dto';
 import { AbandonDeliveryDto } from './dto/abandon-delivery.dto';
 import { CancelDeliveryDto } from './dto/cancel-delivery.dto';
+import { CounterOfferDto } from './dto/counter-offer.dto';
+import { EstimateRequestDto } from './dto/estimate-request.dto';
 
 @ApiTags('Delivery Requests')
 @Controller('delivery-requests')
@@ -88,15 +90,48 @@ export class DeliveryRequestController {
     return ok(await this.service.rejectOffer(code, offerId));
   }
 
+  @Post('track/:code/offers/:offerId/counter')
+  @Public()
+  @ApiOperation({ summary: 'Customer sends a counter-offer with a new proposed price and optional message.' })
+  async counterOffer(
+    @Param('code') code: string,
+    @Param('offerId', ParseUUIDPipe) offerId: string,
+    @Body() dto: CounterOfferDto,
+  ) {
+    return ok(await this.service.counterOffer(code, offerId, dto.amount, dto.message));
+  }
+
+  @Post('estimate')
+  @Public()
+  @ApiOperation({ summary: 'Estimate delivery cost before creating a request.' })
+  async estimateDelivery(@Body() dto: EstimateRequestDto) {
+    return ok(await this.service.estimateForRequest(dto.pickupQuarterId, dto.destinationQuarterId, dto.items));
+  }
+
   @Get('recommended-providers')
   @Public()
-  @ApiOperation({ summary: 'Ranked provider list. Supports ?city=, ?pickupQuarterId=, ?destinationQuarterId= for branch-proximity boosting.' })
+  @ApiOperation({ summary: 'Ranked provider list with per-provider price estimates. Supports ?city=, ?pickupQuarterId=, ?destinationQuarterId=, ?weightKg=, ?sizeLabel=, ?category=, ?quantity=, ?isFragile=.' })
   async recommendProviders(
     @Query('city') city?: string,
     @Query('pickupQuarterId') pickupQuarterId?: string,
     @Query('destinationQuarterId') destinationQuarterId?: string,
+    @Query('weightKg') weightKg?: string,
+    @Query('sizeLabel') sizeLabel?: string,
+    @Query('category') category?: string,
+    @Query('quantity') quantity?: string,
+    @Query('isFragile') isFragile?: string,
   ) {
-    return ok(await this.service.recommendProviders(city, pickupQuarterId, destinationQuarterId));
+    const itemHints =
+      weightKg || sizeLabel || category || quantity || isFragile
+        ? {
+            weightKg: weightKg ? parseFloat(weightKg) : undefined,
+            sizeLabel: sizeLabel || undefined,
+            category: category || undefined,
+            quantity: quantity ? parseInt(quantity, 10) : undefined,
+            isFragile: isFragile === 'true',
+          }
+        : undefined;
+    return ok(await this.service.recommendProviders(city, pickupQuarterId, destinationQuarterId, itemHints));
   }
 
   // ── Customer: My requests ──────────────────────────────────────────────────
