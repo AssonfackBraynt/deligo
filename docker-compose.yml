@@ -53,8 +53,8 @@ services:
       dockerfile: Dockerfile
       args:
         # The browser (on your machine) calls the API through the exposed port.
-        # LOCAL      → http://localhost:4000/api/v1        (keep as-is)
-        # PRODUCTION → https://api.deligo.online/api/v1   (change this line)
+        # LOCAL      → http://localhost:4000/api/v1                (keep as-is)
+        # PRODUCTION → https://api.deligodelivery.com/api/v1   (change this line)
         NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
     depends_on:
       - api

@@ -2,6 +2,7 @@ const API_PORT = 4000;
 const API_PATH = '/api/v1';
 
 function getBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (typeof window === 'undefined') return `http://localhost:${API_PORT}${API_PATH}`;
   return `http://${window.location.hostname}:${API_PORT}${API_PATH}`;
 }

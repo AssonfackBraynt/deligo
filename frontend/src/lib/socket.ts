@@ -3,6 +3,9 @@ import { io, type Socket } from 'socket.io-client';
 const SOCKET_PORT = 4000;
 
 function getSocketUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1$/, '');
+  }
   if (typeof window === 'undefined') return `http://localhost:${SOCKET_PORT}`;
   return `http://${window.location.hostname}:${SOCKET_PORT}`;
 }
