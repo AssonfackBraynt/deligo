@@ -15,8 +15,12 @@ jobs:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          printf '%b' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          echo "Lines: $(wc -l < ~/.ssh/deploy_key)"
+          echo "First: $(head -1 ~/.ssh/deploy_key)"
+          echo "Last: $(tail -1 ~/.ssh/deploy_key)"
+          ssh-keygen -l -f ~/.ssh/deploy_key 2>&1 || true
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy
