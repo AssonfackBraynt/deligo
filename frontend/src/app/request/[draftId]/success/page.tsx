@@ -48,12 +48,27 @@ function buildWhatsAppMessage(draft: RequestDraft | undefined, trackingCode: str
   if (destLocation) lines.push(`Location: ${destLocation}`);
   if (draft?.destinationLandmark) lines.push(`Landmark: ${draft.destinationLandmark}`);
 
-  if (draft?.providerMode || draft?.selectedProviderName) {
+  const isDirect = draft?.providerMode === 'recommended_provider' || draft?.providerMode === 'search_provider';
+
+  if (isDirect && draft?.selectedProviderName) {
     lines.push('');
     lines.push('*🤝 Provider*');
-    if (draft?.selectedProviderName) lines.push(`Selected: ${draft.selectedProviderName}`);
-    else if (draft?.providerMode) lines.push(`Mode: ${draft.providerMode.replace(/_/g, ' ')}`);
+    lines.push(`Selected: ${draft.selectedProviderName}`);
     if (draft?.desiredRewardAmount) lines.push(`Reward offered: ${draft.desiredRewardAmount.toLocaleString()} FCFA`);
+  } else if (!isDirect && draft?.desiredRewardAmount) {
+    lines.push('');
+    lines.push('*🌍 Fulfillment:* Open Marketplace');
+    lines.push(`Reward offered: ${draft.desiredRewardAmount.toLocaleString()} FCFA`);
+  }
+
+  lines.push('');
+  lines.push('*📞 Customer Contact*');
+  if (draft?.customerName) lines.push(`Name: ${draft.customerName}`);
+  if (draft?.whatsappNumber) lines.push(`WhatsApp: ${draft.whatsappNumber}`);
+  if (draft?.paymentNumber && draft.paymentNumber !== draft?.whatsappNumber) {
+    lines.push(`Payment number: ${draft.paymentNumber}`);
+  } else if (!draft?.paymentNumber && draft?.whatsappNumber) {
+    lines.push(`Payment number: ${draft.whatsappNumber} (same as WhatsApp)`);
   }
 
   lines.push('');
