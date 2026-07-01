@@ -81,7 +81,7 @@ export function InstallPrompt() {
       <div
         role="status"
         aria-live="polite"
-        className="fixed bottom-24 left-4 right-4 z-50 rounded-xl border border-border bg-background p-4 shadow-xl"
+        className="fixed bottom-24 left-1/2 z-50 w-80 -translate-x-1/2 rounded-xl border border-border bg-background p-4 shadow-xl"
       >
         <div className="flex items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -121,7 +121,7 @@ export function InstallPrompt() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-24 left-4 right-4 z-50 rounded-xl border border-border bg-background p-4 shadow-xl"
+      className="fixed bottom-24 left-1/2 z-50 w-80 -translate-x-1/2 rounded-xl border border-border bg-background p-4 shadow-xl"
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
