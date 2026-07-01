@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { CheckCircle2, Search, ShieldCheck, Star } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { CheckCircle2, MapPin, Package, Search, ShieldCheck, Star, Users } from 'lucide-react';
 import { RequestFlowLayout } from '@/components/layout/request-flow-layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/field';
 import { RadioCard } from '@/components/ui/radio-card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -21,9 +22,11 @@ import type { ProviderSelectionMode } from '@/features/request/request-types';
 
 export default function ProviderSelectionPage() {
   const { draftId } = useParams<{ draftId: string }>();
+  const router = useRouter();
   const draft = useRequestDraft(draftId);
   const updateDraft = useRequestStore((state) => state.updateDraft);
   const [mode, setMode] = useState<ProviderSelectionMode>(draft?.providerMode ?? 'open_marketplace');
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   // Fetch estimate once the route and item data are available
   useEffect(() => {
@@ -80,6 +83,14 @@ export default function ProviderSelectionPage() {
     setMode(value);
     updateDraft(draftId, { providerMode: value });
   };
+
+  function handleContinue() {
+    if (mode === 'open_marketplace') {
+      setShowSummaryModal(true);
+    } else {
+      router.push(routes.requestContact(draftId));
+    }
+  }
 
   function handleProviderSelect(p: { id: string; displayName: string; estimatedPrice?: number | null }) {
     updateDraft(draftId, {
@@ -143,7 +154,86 @@ export default function ProviderSelectionPage() {
           />
         )}
       </div>
-      <RequestActions nextHref={routes.requestContact(draftId)} disabled={!canContinue} />
+      <RequestActions onClick={handleContinue} disabled={!canContinue} />
+
+      <Dialog
+        open={showSummaryModal}
+        onClose={() => setShowSummaryModal(false)}
+        title="Request Summary"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+              Draft
+            </span>
+          </div>
+
+          <div className="divide-y divide-border rounded-lg border border-border">
+            <div className="flex items-start gap-3 p-3">
+              <MapPin size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-muted-foreground">Route</p>
+                <p className="text-sm text-foreground">
+                  {draft?.pickupQuarterName ?? draft?.pickupTownName ?? '—'}{' '}
+                  →{' '}
+                  {draft?.destinationQuarterName ?? draft?.destinationTownName ?? '—'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3">
+              <Package size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-muted-foreground">Item</p>
+                <p className="text-sm text-foreground">{draft?.itemName ?? '—'}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3">
+              <Users size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-muted-foreground">Provider</p>
+                <p className="text-sm text-foreground">Open marketplace</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {draft?.estimatedDeliveryCost != null && (
+              <div className="flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-muted-foreground">DeliGo estimate</p>
+                <p className="text-sm font-semibold text-foreground">
+                  ~{draft.estimatedDeliveryCost.toLocaleString()} FCFA
+                </p>
+              </div>
+            )}
+            {draft?.desiredRewardAmount != null && (
+              <div className="flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-muted-foreground">Your bid</p>
+                <p className="text-sm font-bold text-primary">
+                  {draft.desiredRewardAmount.toLocaleString()} FCFA
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowSummaryModal(false)}
+            >
+              Adjust
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={() => router.push(routes.requestContact(draftId))}
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </RequestFlowLayout>
   );
 }

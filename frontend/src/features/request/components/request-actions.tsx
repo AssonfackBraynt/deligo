@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { StickyActionBar } from '@/components/ui/sticky-action-bar';
 
 type RequestActionsProps = {
-  nextHref: string;
+  nextHref?: string;
   disabled?: boolean;
   label?: string;
+  onClick?: () => void;
 };
 
-export function RequestActions({ nextHref, disabled, label = 'Continue' }: RequestActionsProps) {
+export function RequestActions({ nextHref = '', disabled, label = 'Continue', onClick }: RequestActionsProps) {
   const router = useRouter();
 
   return (
@@ -21,7 +22,7 @@ export function RequestActions({ nextHref, disabled, label = 'Continue' }: Reque
         size="lg"
         disabled={disabled}
         className="w-full lg:w-auto"
-        onClick={() => router.push(nextHref)}
+        onClick={() => (onClick ? onClick() : router.push(nextHref))}
       >
         {label}
         <ArrowRight size={19} aria-hidden="true" />
